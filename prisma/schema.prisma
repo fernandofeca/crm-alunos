@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  password  String
+  role      String    @default("equipe")
+  contatos  Contato[]
+  createdAt DateTime  @default(now())
+}
+
+model Aluno {
+  id               String       @id @default(cuid())
+  nome             String
+  email            String       @unique
+  cpf              String       @default("")
+  whatsapp         String
+  concurso         String       @default("")
+  mediaGeral       Float        @default(0)
+  ativo            Boolean      @default(false)
+  estudouUltimos7d Boolean      @default(false)
+  discMaisBaixaNome   String   @default("")
+  discMaisBaixaNota   Float    @default(0)
+  assuntoMaisBaixoNome String  @default("")
+  assuntoMaisBaixoNota Float   @default(0)
+  disciplinas      Disciplina[]
+  contatos         Contato[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model Disciplina {
+  id      String    @id @default(cuid())
+  nome    String
+  nota    Float     @default(0)
+  alunoId String
+  aluno   Aluno     @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  assuntos Assunto[]
+}
+
+model Assunto {
+  id           String     @id @default(cuid())
+  nome         String
+  nota         Float      @default(0)
+  disciplinaId String
+  disciplina   Disciplina @relation(fields: [disciplinaId], references: [id], onDelete: Cascade)
+}
+
+model Contato {
+  id      String   @id @default(cuid())
+  data    DateTime @default(now())
+  tipo    String
+  obs     String   @default("")
+  alunoId String
+  aluno   Aluno    @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User     @relation(fields: [userId], references: [id])
+}
