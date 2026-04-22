@@ -13,21 +13,25 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-const sql = readFileSync(
-  join(__dirname, "../prisma/migrations/20260421000000_init/migration.sql"),
-  "utf8"
-);
+const migrations = [
+  "../prisma/migrations/20260421000000_init/migration.sql",
+  "../prisma/migrations/20260421000001_plano_estudo/migration.sql",
+];
 
-try {
-  await pool.query(sql);
-  console.log("✓ Migration concluída com sucesso");
-} catch (e) {
-  if (e.code === "42P07") {
-    console.log("✓ Tabelas já existem, pulando migration");
-  } else {
-    console.error("Erro na migration:", e.message);
-    process.exit(1);
+for (const file of migrations) {
+  const sql = readFileSync(join(__dirname, file), "utf8");
+  try {
+    await pool.query(sql);
+    console.log(`✓ ${file} concluída`);
+  } catch (e) {
+    if (e.code === "42P07") {
+      console.log(`✓ ${file} já aplicada (tabelas existem)`);
+    } else {
+      console.error(`Erro em ${file}:`, e.message);
+      process.exit(1);
+    }
   }
-} finally {
-  await pool.end();
 }
+
+await pool.end();
+console.log("✓ Todas as migrations concluídas");

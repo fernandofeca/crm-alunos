@@ -26,6 +26,9 @@ model Aluno {
   mediaGeral       Float        @default(0)
   ativo            Boolean      @default(false)
   estudouUltimos7d Boolean      @default(false)
+  statusEstudo     String       @default("nao_estudou")
+  planoTipo        String       @default("")
+  planoVencimento  DateTime?
   discMaisBaixaNome   String   @default("")
   discMaisBaixaNota   Float    @default(0)
   assuntoMaisBaixoNome String  @default("")
