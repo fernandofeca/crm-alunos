@@ -12,11 +12,12 @@ model User {
   email     String    @unique
   password  String
   role      String    @default("equipe")
-  contatos          Contato[]
-  tarefas           Tarefa[]  @relation("TarefaCriador")
-  tarefasAtribuidas Tarefa[]  @relation("TarefaResponsavel")
-  eventos           Evento[]
-  createdAt         DateTime  @default(now())
+  contatos              Contato[]
+  tarefas               Tarefa[]  @relation("TarefaCriador")
+  tarefasAtribuidas     Tarefa[]  @relation("TarefaResponsavel")
+  eventos               Evento[]
+  googleRefreshToken    String?
+  createdAt             DateTime  @default(now())
 }
 
 model Aluno {

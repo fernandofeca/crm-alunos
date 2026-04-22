@@ -78,6 +78,9 @@ export default function AgendaPage() {
   const [mostrarSync, setMostrarSync] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [googleConectado, setGoogleConectado] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [syncResultado, setSyncResultado] = useState<{ criados: number; atualizados: number; total: number } | null>(null);
   const icalUrl = useRef("");
   const [form, setForm] = useState({ titulo: "", descricao: "", hora: "09:00", tipo: "lembrete", alunoId: "" });
 
@@ -87,7 +90,38 @@ export default function AgendaPage() {
     fetch("/api/agenda/ical-token").then((r) => r.json()).then((d) => {
       if (d.url) icalUrl.current = d.url;
     });
+    fetch("/api/agenda/google/status").then((r) => r.json()).then((d) => setGoogleConectado(d.conectado));
+
+    // Verificar se voltou do OAuth Google
+    const params = new URLSearchParams(window.location.search);
+    const google = params.get("google");
+    if (google === "conectado") {
+      setGoogleConectado(true);
+      setMostrarSync(true);
+      window.history.replaceState({}, "", "/agenda");
+    } else if (google === "erro" || google === "sem_token") {
+      window.history.replaceState({}, "", "/agenda");
+    }
   }, []);
+
+  async function sincronizarGoogle() {
+    setSincronizando(true);
+    setSyncResultado(null);
+    const res = await fetch("/api/agenda/google/sync", { method: "POST" });
+    const data = await res.json();
+    if (res.ok) {
+      setSyncResultado(data);
+      carregar();
+    }
+    setSincronizando(false);
+  }
+
+  async function desconectarGoogle() {
+    if (!confirm("Desconectar o Google Agenda?")) return;
+    await fetch("/api/agenda/google/disconnect", { method: "POST" });
+    setGoogleConectado(false);
+    setSyncResultado(null);
+  }
 
   async function copiarUrl() {
     if (!icalUrl.current) return;
@@ -236,48 +270,96 @@ export default function AgendaPage() {
 
       {/* Painel Google Calendar */}
       {mostrarSync && (
-        <div className="bg-white rounded-xl border border-blue-200 p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-blue-200 p-5 space-y-5">
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="font-semibold text-slate-800 flex items-center gap-2">
-                <svg className="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
-                </svg>
-                Sincronizar com Google Agenda
-              </p>
-              <p className="text-sm text-slate-500 mt-1">
-                Assine o feed iCal para que todos os eventos apareçam automaticamente no Google Agenda.
-              </p>
-            </div>
-            <button onClick={() => setMostrarSync(false)} className="text-slate-400 hover:text-slate-600 flex-shrink-0">
+            <p className="font-semibold text-slate-800 flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+              </svg>
+              Google Agenda
+            </p>
+            <button onClick={() => { setMostrarSync(false); setSyncResultado(null); }}
+              className="text-slate-400 hover:text-slate-600 flex-shrink-0">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
-          {/* URL + copiar */}
-          <div className="flex gap-2">
-            <input readOnly value={icalUrl.current || "Carregando URL..."}
-              className="flex-1 text-xs border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 text-slate-600 font-mono select-all" />
-            <button onClick={copiarUrl}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition flex-shrink-0 ${
-                copiado ? "bg-green-500 text-white" : "border border-slate-300 text-slate-600 hover:bg-slate-50"
-              }`}>
-              {copiado ? "Copiado!" : "Copiar"}
-            </button>
+          {/* Seção 1: Sincronizar via conta Google */}
+          <div className="border border-slate-100 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Sincronizar com minha conta Google</p>
+                <p className="text-xs text-slate-500 mt-0.5">Importa eventos dos últimos 30 dias + próximos 180 dias automaticamente.</p>
+              </div>
+              {googleConectado && (
+                <span className="flex items-center gap-1 text-xs text-green-600 font-medium bg-green-50 px-2 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                  Conectado
+                </span>
+              )}
+            </div>
+
+            {!googleConectado ? (
+              <a href="/api/agenda/google/auth"
+                className="inline-flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg transition">
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Conectar com o Google
+              </a>
+            ) : (
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={sincronizarGoogle} disabled={sincronizando}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50 transition">
+                  {sincronizando ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  )}
+                  {sincronizando ? "Sincronizando..." : "Sincronizar agora"}
+                </button>
+                <button onClick={desconectarGoogle}
+                  className="text-sm text-red-400 hover:text-red-600 hover:underline px-2 transition">
+                  Desconectar
+                </button>
+              </div>
+            )}
+
+            {syncResultado && (
+              <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 flex gap-4">
+                <span><strong>{syncResultado.criados}</strong> novos</span>
+                <span><strong>{syncResultado.atualizados}</strong> atualizados</span>
+                <span className="text-slate-400">{syncResultado.total} encontrados</span>
+              </div>
+            )}
           </div>
 
-          {/* Instruções */}
-          <div className="bg-slate-50 rounded-lg p-4 space-y-2">
-            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Como adicionar ao Google Agenda</p>
-            <ol className="text-xs text-slate-500 space-y-1.5 list-decimal list-inside">
-              <li>Abra o <strong className="text-slate-700">Google Agenda</strong> no computador</li>
-              <li>No menu lateral esquerdo, clique em <strong className="text-slate-700">&quot;Outros agendas&quot;</strong> → <strong className="text-slate-700">&quot;+&quot;</strong></li>
-              <li>Selecione <strong className="text-slate-700">&quot;De URL&quot;</strong></li>
-              <li>Cole a URL copiada acima e clique em <strong className="text-slate-700">&quot;Adicionar agenda&quot;</strong></li>
-              <li>Os eventos serão sincronizados automaticamente</li>
-            </ol>
+          {/* Seção 2: Feed iCal (CRM → Google) */}
+          <div className="border border-slate-100 rounded-xl p-4 space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Exportar agenda do CRM para o Google</p>
+              <p className="text-xs text-slate-500 mt-0.5">Use esta URL para assinar a agenda do CRM no Google Agenda.</p>
+            </div>
+            <div className="flex gap-2">
+              <input readOnly value={icalUrl.current || "Carregando..."}
+                className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 text-slate-500 font-mono" />
+              <button onClick={copiarUrl}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex-shrink-0 ${
+                  copiado ? "bg-green-500 text-white" : "border border-slate-300 text-slate-600 hover:bg-slate-50"
+                }`}>
+                {copiado ? "Copiado!" : "Copiar"}
+              </button>
+            </div>
           </div>
         </div>
       )}
