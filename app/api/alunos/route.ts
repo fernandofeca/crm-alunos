@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl;
   const q = searchParams.get("q") ?? "";
-  const filtro = searchParams.get("filtro") ?? "";
+  const filtroParam = searchParams.get("filtro") ?? "";
+  const filtros = filtroParam ? filtroParam.split(",").filter(Boolean) : [];
   const concurso = searchParams.get("concurso") ?? "";
   const planoTipo = searchParams.get("planoTipo") ?? "";
   const ativo = searchParams.get("ativo");
@@ -38,21 +39,29 @@ export async function GET(req: NextRequest) {
     ];
   }
 
-  if (filtro === "nota_baixa") {
-    where.taxaAcertos = { lt: 60 };
-  } else if (filtro === "metas_em_dia") {
-    where.diasAtraso = 0;
-  } else if (filtro === "novos") {
-    const trinta = new Date();
-    trinta.setDate(trinta.getDate() - 30);
-    where.dataInicio = { gte: trinta };
-  } else if (filtro === "sem_contato") {
-    where.contatos = { none: {} };
-  } else if (filtro === "acompanhar") {
-    where.acompanharDePerto = true;
-  } else {
-    const metasMatch = filtro.match(/^metas_(\d+)d$/);
-    if (metasMatch) where.diasAtraso = parseInt(metasMatch[1], 10);
+  const diasAtrasoValues: number[] = [];
+  for (const f of filtros) {
+    if (f === "nota_baixa") {
+      where.taxaAcertos = { lt: 60 };
+    } else if (f === "metas_em_dia") {
+      diasAtrasoValues.push(0);
+    } else if (f === "novos") {
+      const trinta = new Date();
+      trinta.setDate(trinta.getDate() - 30);
+      where.dataInicio = { gte: trinta };
+    } else if (f === "sem_contato") {
+      where.contatos = { none: {} };
+    } else if (f === "acompanhar") {
+      where.acompanharDePerto = true;
+    } else {
+      const metasMatch = f.match(/^metas_(\d+)d$/);
+      if (metasMatch) diasAtrasoValues.push(parseInt(metasMatch[1], 10));
+    }
+  }
+  if (diasAtrasoValues.length === 1) {
+    where.diasAtraso = diasAtrasoValues[0];
+  } else if (diasAtrasoValues.length > 1) {
+    where.diasAtraso = { in: diasAtrasoValues };
   }
 
   if (concurso) where.concurso = concurso;

@@ -84,10 +84,11 @@ export default function AlunosClient({
 }) {
   const searchParams = useSearchParams();
   const filtroInicial = searchParams.get("filtro") ?? "";
+  const filtrosIniciais = filtroInicial ? filtroInicial.split(",").filter(Boolean) : [];
 
   const [alunos, setAlunos] = useState<Aluno[]>(initialAlunos);
   const [q, setQ] = useState("");
-  const [filtro, setFiltro] = useState(filtroInicial);
+  const [filtros, setFiltros] = useState<string[]>(filtrosIniciais);
   const [concursoFiltro, setConcursoFiltro] = useState("");
   const [planoFiltro, setPlanoFiltro] = useState("");
   const [apenasAtivos, setApenasAtivos] = useState(true);
@@ -98,7 +99,7 @@ export default function AlunosClient({
   const pageSize = 50;
 
   useEffect(() => {
-    buscar("", filtroInicial, "", "", true, 0, null);
+    buscar("", filtrosIniciais, "", "", true, 0, null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -110,11 +111,11 @@ export default function AlunosClient({
     return "";
   }
 
-  async function buscar(query: string, f: string, concurso: string, plano: string, ativos: boolean, p: number, s: typeof sort) {
+  async function buscar(query: string, f: string[], concurso: string, plano: string, ativos: boolean, p: number, s: typeof sort) {
     setLoading(true);
     const params = new URLSearchParams();
     if (query) params.set("q", query);
-    if (f) params.set("filtro", f);
+    if (f.length > 0) params.set("filtro", f.join(","));
     if (concurso) params.set("concurso", concurso);
     if (plano) params.set("planoTipo", plano);
     if (ativos) params.set("ativo", "true");
@@ -131,28 +132,30 @@ export default function AlunosClient({
 
   function handleQ(v: string) {
     setQ(v);
-    buscar(v, filtro, concursoFiltro, planoFiltro, apenasAtivos, 0, sort);
+    buscar(v, filtros, concursoFiltro, planoFiltro, apenasAtivos, 0, sort);
   }
 
   function handleFiltro(v: string) {
-    const next = filtro === v ? "" : v;
-    setFiltro(next);
+    const next = filtros.includes(v)
+      ? filtros.filter((f) => f !== v)
+      : [...filtros, v];
+    setFiltros(next);
     buscar(q, next, concursoFiltro, planoFiltro, apenasAtivos, 0, sort);
   }
 
   function handleConcurso(v: string) {
     setConcursoFiltro(v);
-    buscar(q, filtro, v, planoFiltro, apenasAtivos, 0, sort);
+    buscar(q, filtros, v, planoFiltro, apenasAtivos, 0, sort);
   }
 
   function handlePlano(v: string) {
     setPlanoFiltro(v);
-    buscar(q, filtro, concursoFiltro, v, apenasAtivos, 0, sort);
+    buscar(q, filtros, concursoFiltro, v, apenasAtivos, 0, sort);
   }
 
   function handleApenasAtivos(v: boolean) {
     setApenasAtivos(v);
-    buscar(q, filtro, concursoFiltro, planoFiltro, v, 0, sort);
+    buscar(q, filtros, concursoFiltro, planoFiltro, v, 0, sort);
   }
 
   function handleSort(field: SortField, defaultDir: SortDir = "desc") {
@@ -165,7 +168,7 @@ export default function AlunosClient({
       next = null;
     }
     setSort(next);
-    buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, 0, next);
+    buscar(q, filtros, concursoFiltro, planoFiltro, apenasAtivos, 0, next);
   }
 
   const totalPages = Math.ceil(total / pageSize);
@@ -228,7 +231,7 @@ export default function AlunosClient({
           <button
             onClick={() => handleFiltro("novos")}
             className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
-              filtro === "novos"
+              filtros.includes("novos")
                 ? "bg-indigo-500 text-white border-indigo-500"
                 : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
             }`}
@@ -238,7 +241,7 @@ export default function AlunosClient({
           <button
             onClick={() => handleFiltro("nota_baixa")}
             className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
-              filtro === "nota_baixa"
+              filtros.includes("nota_baixa")
                 ? "bg-red-500 text-white border-red-500"
                 : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
             }`}
@@ -248,7 +251,7 @@ export default function AlunosClient({
           <button
             onClick={() => handleFiltro("acompanhar")}
             className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
-              filtro === "acompanhar"
+              filtros.includes("acompanhar")
                 ? "bg-orange-500 text-white border-orange-500"
                 : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
             }`}
@@ -275,7 +278,7 @@ export default function AlunosClient({
               key={s.value}
               onClick={() => handleFiltro(s.value)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                filtro === s.value ? s.ativo : s.inativo
+                filtros.includes(s.value) ? s.ativo : s.inativo
               }`}
             >
               {s.label}
@@ -422,14 +425,14 @@ export default function AlunosClient({
         {totalPages > 1 && (
           <div className="flex gap-2">
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page - 1, sort)}
+              onClick={() => buscar(q, filtros, concursoFiltro, planoFiltro, apenasAtivos, page - 1, sort)}
               disabled={page === 0 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               ← Anterior
             </button>
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page + 1, sort)}
+              onClick={() => buscar(q, filtros, concursoFiltro, planoFiltro, apenasAtivos, page + 1, sort)}
               disabled={page >= totalPages - 1 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
