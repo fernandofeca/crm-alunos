@@ -27,6 +27,7 @@ type Aluno = {
   planoTipo: string;
   mediaGeral: number;
   statusEstudo: string;
+  diasAtraso: number;
   disciplinas: Disciplina[];
   contatos: Contato[];
 };
@@ -219,6 +220,7 @@ export default function AlunosClient({
               <th className="text-left px-4 py-3">Disciplina baixa</th>
               <th className="text-left px-4 py-3">Assunto baixo</th>
               <th className="text-left px-4 py-3">Status Estudo</th>
+              <th className="text-left px-4 py-3">Metas</th>
               <th className="text-left px-4 py-3">Último contato</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -291,6 +293,18 @@ export default function AlunosClient({
                     <span className={`text-xs font-medium ${STATUS_COR[a.statusEstudo] ?? "text-slate-400"}`}>
                       {statusInfo?.label ?? "—"}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {a.diasAtraso > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {a.diasAtraso}d atraso
+                      </span>
+                    ) : (
+                      <span className="text-xs text-green-600 font-medium">Em dia</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-500">
                     {ultimoContato ? (

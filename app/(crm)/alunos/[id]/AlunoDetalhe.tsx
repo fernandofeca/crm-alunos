@@ -24,6 +24,7 @@ type Aluno = {
   discMaisBaixaNota: number;
   assuntoMaisBaixoNome: string;
   assuntoMaisBaixoNota: number;
+  diasAtraso: number;
   disciplinas: Disciplina[];
   contatos: Contato[];
 };
@@ -293,7 +294,7 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
           </div>
         )}
 
-        <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="mt-6 grid grid-cols-2 sm:grid-cols-5 gap-4">
           {/* Status */}
           <div className="bg-slate-50 rounded-lg p-4">
             <p className="text-xs text-slate-500 mb-2">Status</p>
@@ -350,6 +351,32 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
             nota={aluno.assuntoMaisBaixoNota}
             onSave={salvarAssunto}
           />
+
+          {/* Metas Tutory */}
+          <div className="bg-slate-50 rounded-lg p-4">
+            <p className="text-xs text-slate-500 mb-2">Metas (Tutory)</p>
+            {aluno.diasAtraso > 0 ? (
+              <div className="flex flex-col gap-1">
+                <span className="inline-flex items-center gap-1.5 text-sm font-bold text-orange-600">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {aluno.diasAtraso} dia{aluno.diasAtraso !== 1 ? "s" : ""} de atraso
+                </span>
+                <span className="text-xs text-orange-500">Meta Atrasada</span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                <span className="inline-flex items-center gap-1.5 text-sm font-bold text-green-600">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Em dia
+                </span>
+                <span className="text-xs text-green-500">Metas ok</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Plano e Status de Estudo */}

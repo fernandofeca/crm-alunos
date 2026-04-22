@@ -21,6 +21,7 @@ const migrations = [
   "../prisma/migrations/20260422000000_evento_external_uid/migration.sql",
   "../prisma/migrations/20260422000001_user_google_token/migration.sql",
   "../prisma/migrations/20260422000002_user_permissoes/migration.sql",
+  "../prisma/migrations/20260422000003_aluno_dias_atraso/migration.sql",
 ];
 
 for (const file of migrations) {
