@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import AlunosClient from "./AlunosClient";
+import TutorySyncButton from "./TutorySyncButton";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function AlunosPage() {
           <p className="text-sm text-slate-500">{total} alunos ativos</p>
         </div>
         <div className="flex gap-2">
+          <TutorySyncButton />
           <Link
             href="/alunos/importar"
             className="border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm font-semibold px-4 py-2 rounded-lg transition"
