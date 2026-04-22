@@ -16,6 +16,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const migrations = [
   "../prisma/migrations/20260421000000_init/migration.sql",
   "../prisma/migrations/20260421000001_plano_estudo/migration.sql",
+  "../prisma/migrations/20260421000002_agenda_tarefas/migration.sql",
 ];
 
 for (const file of migrations) {
