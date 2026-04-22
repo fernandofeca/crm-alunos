@@ -2,6 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 
+const include = {
+  aluno: { select: { id: true, nome: true } },
+  user: { select: { id: true, name: true } },
+  responsavel: { select: { id: true, name: true } },
+};
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
@@ -16,13 +22,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.prioridade !== undefined) campos.prioridade = body.prioridade;
   if (body.dataVencimento !== undefined) campos.dataVencimento = body.dataVencimento ? new Date(body.dataVencimento) : null;
   if (body.alunoId !== undefined) campos.alunoId = body.alunoId || null;
+  if (body.responsavelId !== undefined) campos.responsavelId = body.responsavelId || null;
 
-  const tarefa = await prisma.tarefa.update({
-    where: { id },
-    data: campos,
-    include: { aluno: { select: { id: true, nome: true } }, user: { select: { name: true } } },
-  });
-
+  const tarefa = await prisma.tarefa.update({ where: { id }, data: campos, include });
   return NextResponse.json(tarefa);
 }
 

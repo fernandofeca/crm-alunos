@@ -12,10 +12,11 @@ model User {
   email     String    @unique
   password  String
   role      String    @default("equipe")
-  contatos  Contato[]
-  tarefas   Tarefa[]
-  eventos   Evento[]
-  createdAt DateTime  @default(now())
+  contatos          Contato[]
+  tarefas           Tarefa[]  @relation("TarefaCriador")
+  tarefasAtribuidas Tarefa[]  @relation("TarefaResponsavel")
+  eventos           Evento[]
+  createdAt         DateTime  @default(now())
 }
 
 model Aluno {
@@ -72,18 +73,20 @@ model Contato {
 }
 
 model Tarefa {
-  id             String    @id @default(cuid())
-  titulo         String
-  descricao      String    @default("")
-  concluida      Boolean   @default(false)
-  prioridade     String    @default("media")
-  dataVencimento DateTime?
-  alunoId        String?
-  aluno          Aluno?    @relation(fields: [alunoId], references: [id], onDelete: SetNull)
-  userId         String
-  user           User      @relation(fields: [userId], references: [id])
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  titulo          String
+  descricao       String    @default("")
+  concluida       Boolean   @default(false)
+  prioridade      String    @default("media")
+  dataVencimento  DateTime?
+  alunoId         String?
+  aluno           Aluno?    @relation(fields: [alunoId], references: [id], onDelete: SetNull)
+  userId          String
+  user            User      @relation("TarefaCriador", fields: [userId], references: [id])
+  responsavelId   String?
+  responsavel     User?     @relation("TarefaResponsavel", fields: [responsavelId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 model Evento {

@@ -2,6 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 
+const include = {
+  aluno: { select: { id: true, nome: true } },
+  user: { select: { id: true, name: true } },
+  responsavel: { select: { id: true, name: true } },
+};
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
@@ -15,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   const tarefas = await prisma.tarefa.findMany({
     where,
-    include: { aluno: { select: { id: true, nome: true } }, user: { select: { name: true } } },
+    include,
     orderBy: [{ concluida: "asc" }, { dataVencimento: "asc" }, { createdAt: "desc" }],
   });
 
@@ -34,9 +40,10 @@ export async function POST(req: NextRequest) {
       prioridade: body.prioridade ?? "media",
       dataVencimento: body.dataVencimento ? new Date(body.dataVencimento) : null,
       alunoId: body.alunoId || null,
+      responsavelId: body.responsavelId || null,
       userId: (session.user?.id ?? "") as string,
     },
-    include: { aluno: { select: { id: true, nome: true } }, user: { select: { name: true } } },
+    include,
   });
 
   return NextResponse.json(tarefa, { status: 201 });
