@@ -61,7 +61,7 @@ export default function ImportarPage() {
         </button>
         <h1 className="text-2xl font-bold text-slate-800">Importar Alunos</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Importe uma planilha Excel com as colunas: <span className="font-medium text-slate-700">Nome, Email, CPF, Celular, Concurso, Status, Vencimento do Plano</span>
+          Importe uma planilha Excel com as colunas: <span className="font-medium text-slate-700">Concurso, CPF, Nome, Email, Celular, Vencimento do Plano, Status</span>
         </p>
       </div>
 
@@ -108,7 +108,7 @@ export default function ImportarPage() {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-slate-500">
-                {["Nome", "Email", "CPF", "Celular", "Concurso", "Status", "Vencimento do Plano"].map((col) => (
+                {["Concurso", "CPF", "Nome", "Email", "Celular", "Vencimento do Plano", "Status"].map((col) => (
                   <th key={col} className="text-left px-3 py-2 bg-white border border-slate-200 font-semibold">
                     {col}
                   </th>
@@ -117,13 +117,13 @@ export default function ImportarPage() {
             </thead>
             <tbody>
               <tr className="text-slate-400">
+                <td className="px-3 py-2 border border-slate-200 bg-white">PCSP 2025</td>
+                <td className="px-3 py-2 border border-slate-200 bg-white">123.456.789-00</td>
                 <td className="px-3 py-2 border border-slate-200 bg-white">João Silva</td>
                 <td className="px-3 py-2 border border-slate-200 bg-white">joao@email.com</td>
-                <td className="px-3 py-2 border border-slate-200 bg-white">123.456.789-00</td>
                 <td className="px-3 py-2 border border-slate-200 bg-white">11999999999</td>
-                <td className="px-3 py-2 border border-slate-200 bg-white">PCSP 2025</td>
-                <td className="px-3 py-2 border border-slate-200 bg-white">Ativo</td>
                 <td className="px-3 py-2 border border-slate-200 bg-white">31/12/2025</td>
+                <td className="px-3 py-2 border border-slate-200 bg-white">Ativo</td>
               </tr>
             </tbody>
           </table>
