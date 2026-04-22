@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
   const colCpf       = encontrarChave(headers, ["cpf", "documento", "doc"]);
   const colCelular   = encontrarChave(headers, ["celular", "telefone", "whatsapp", "fone", "contato", "cel", "tel"]);
   const colConcurso  = encontrarChave(headers, ["concurso", "curso", "turma", "produto"]);
-  const colStatus    = encontrarChave(headers, ["status", "situacao", "situação", "situação"]);
+  const colStatus    = encontrarChave(headers, ["status", "situacao", "situação", "situação do aluno", "ativo", "ativa"]);
   const colVencimento = encontrarChave(headers, [
     "vencimento do plano", "vencimento", "validade", "expiracao", "expiração",
     "data vencimento", "data de vencimento", "venc",
@@ -113,7 +113,10 @@ export async function POST(req: NextRequest) {
     const concurso = colConcurso  ? primeiroValor(row, colConcurso) : "";
 
     const statusRaw = colStatus ? primeiroValor(row, colStatus).toLowerCase().trim() : null;
-    const ativo = statusRaw !== null ? statusRaw === "ativo" : undefined;
+    const ATIVOS = ["ativo", "ativa", "sim", "s", "1", "true", "yes", "active"];
+    const ativo = statusRaw !== null && statusRaw !== ""
+      ? ATIVOS.includes(statusRaw)
+      : undefined;
 
     const vencimentoRaw = colVencimento ? row[colVencimento] : null;
     const planoVencimento = vencimentoRaw ? parseData(vencimentoRaw) : null;
