@@ -14,7 +14,18 @@ export async function GET(req: NextRequest) {
   const concurso = searchParams.get("concurso") ?? "";
   const planoTipo = searchParams.get("planoTipo") ?? "";
   const ativo = searchParams.get("ativo");
+  const todos = searchParams.get("todos") === "true";
   const page = Math.max(0, parseInt(searchParams.get("page") ?? "0", 10));
+
+  // Modo leve: retorna só id+nome de todos os alunos ativos (para selects)
+  if (todos) {
+    const alunos = await prisma.aluno.findMany({
+      where: { ativo: true },
+      select: { id: true, nome: true },
+      orderBy: { nome: "asc" },
+    });
+    return NextResponse.json(alunos);
+  }
 
   const where: Record<string, unknown> = {};
 

@@ -52,7 +52,7 @@ export default function TarefasPage() {
   useEffect(() => {
     carregar();
     fetch("/api/usuarios").then((r) => r.json()).then(setUsuarios);
-    fetch("/api/alunos?ativo=true&page=0").then((r) => r.json()).then((d) => setAlunos(d.alunos ?? []));
+    fetch("/api/alunos?todos=true").then((r) => r.json()).then(setAlunos);
   }, []);
 
   async function carregar() {
