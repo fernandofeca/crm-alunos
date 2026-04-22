@@ -41,6 +41,7 @@ model Aluno {
   diasAtraso          Int      @default(0)
   taxaAcertos         Float    @default(0)
   totalQuestoes       Int      @default(0)
+  tutoryCreatedAt     DateTime?
   disciplinas      Disciplina[]
   contatos         Contato[]
   tarefas          Tarefa[]

@@ -11,6 +11,9 @@ type TutoryAluno = {
   telefone: string | null;
   plano_nome: string | null;
   dt_expiracao: string | null;
+  dt_cadastro?: string | null;
+  created_at?: string | null;
+  [key: string]: unknown;
 };
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -228,6 +231,10 @@ export async function POST() {
 
     const resultados = { criados: 0, atualizados: 0, erros: [] as string[] };
 
+    // Debug: show available fields from first student to confirm date field name
+    const primeiroAluno = tutoryAlunos[0];
+    const camposDisponiveis = primeiroAluno ? Object.keys(primeiroAluno).join(", ") : "—";
+
     // 1. Sync basic student data from listar-alunos
     for (const t of tutoryAlunos) {
       try {
@@ -238,6 +245,8 @@ export async function POST() {
         const nome = t.nome?.trim() || "Sem nome";
         const concurso = t.plano_nome ?? "";
         const planoVencimento = t.dt_expiracao ? new Date(t.dt_expiracao) : null;
+        const dtCadastroRaw = (t.dt_cadastro ?? t.created_at ?? t.data_cadastro ?? null) as string | null;
+        const tutoryCreatedAt = dtCadastroRaw ? new Date(dtCadastroRaw) : null;
 
         let existente = email ? await prisma.aluno.findUnique({ where: { email } }) : null;
         if (!existente && cpf.length === 11 && !cpf.startsWith("000")) {
@@ -254,12 +263,13 @@ export async function POST() {
               planoVencimento,
               ativo,
               ...(cpf && !existente.cpf ? { cpf } : {}),
+              ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}),
             },
           });
           resultados.atualizados++;
         } else if (ativo) {
           await prisma.aluno.create({
-            data: { nome, email: email || `sem-email-tutory-${t.id}`, cpf, whatsapp, concurso, planoVencimento, ativo: true },
+            data: { nome, email: email || `sem-email-tutory-${t.id}`, cpf, whatsapp, concurso, planoVencimento, ativo: true, ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}) },
           });
           resultados.criados++;
         }
@@ -291,7 +301,8 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM` });
+    const comData = tutoryAlunos.filter(t => t.dt_cadastro || t.created_at || t.data_cadastro).length;
+    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, camposDebug: `campos: ${camposDisponiveis}`, dataDebug: `${comData}/${tutoryAlunos.length} com data cadastro` });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro na sincronização" },

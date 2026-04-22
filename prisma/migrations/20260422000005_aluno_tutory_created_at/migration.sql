@@ -1,0 +1,1 @@
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS "tutoryCreatedAt" TIMESTAMP(3);
