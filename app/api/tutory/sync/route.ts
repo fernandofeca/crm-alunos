@@ -227,6 +227,7 @@ export async function POST() {
 
     const resultados = { criados: 0, atualizados: 0, erros: [] as string[] };
 
+    // 1. Sync basic student data from listar-alunos
     for (const t of tutoryAlunos) {
       try {
         const ativo = isAtivo(t);
@@ -236,19 +237,13 @@ export async function POST() {
         const nome = t.nome?.trim() || "Sem nome";
         const concurso = t.plano_nome ?? "";
         const planoVencimento = t.dt_expiracao ? new Date(t.dt_expiracao) : null;
-        const diasAtraso = diasAtrasoMap.get(email) ?? 0;
-        const questao = questoesMap.get(email);
-        const taxaAcertos = questao?.taxaAcertos ?? undefined;
-        const totalQuestoes = questao?.totalQuestoes ?? undefined;
 
-        // Match by email first, then CPF (only real CPFs, 11 digits, not sequential)
         let existente = email ? await prisma.aluno.findUnique({ where: { email } }) : null;
         if (!existente && cpf.length === 11 && !cpf.startsWith("000")) {
           existente = await prisma.aluno.findFirst({ where: { cpf } }) ?? null;
         }
 
         if (existente) {
-          // Update only fields from Tutory — preserve CRM-specific history
           await prisma.aluno.update({
             where: { id: existente.id },
             data: {
@@ -257,33 +252,39 @@ export async function POST() {
               concurso: concurso || existente.concurso,
               planoVencimento,
               ativo,
-              diasAtraso,
-              ...(taxaAcertos !== undefined ? { taxaAcertos } : {}),
-              ...(totalQuestoes !== undefined ? { totalQuestoes } : {}),
               ...(cpf && !existente.cpf ? { cpf } : {}),
             },
           });
           resultados.atualizados++;
         } else if (ativo) {
-          // Only create if currently active
           await prisma.aluno.create({
-            data: {
-              nome,
-              email: email || `sem-email-tutory-${t.id}`,
-              cpf,
-              whatsapp,
-              concurso,
-              planoVencimento,
-              ativo: true,
-              diasAtraso,
-              ...(taxaAcertos !== undefined ? { taxaAcertos } : {}),
-              ...(totalQuestoes !== undefined ? { totalQuestoes } : {}),
-            },
+            data: { nome, email: email || `sem-email-tutory-${t.id}`, cpf, whatsapp, concurso, planoVencimento, ativo: true },
           });
           resultados.criados++;
         }
       } catch (e) {
         resultados.erros.push(`${t.nome}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    // 2. Update diasAtraso for ALL CRM students based on scraped atraso page
+    //    (independent of listar-alunos — covers older students too)
+    if (diasAtrasoMap.size > 0) {
+      // Students with delays: set their diasAtraso
+      for (const [email, dias] of diasAtrasoMap) {
+        await prisma.aluno.updateMany({ where: { email }, data: { diasAtraso: dias } });
+      }
+      // All other active students: reset to 0
+      await prisma.aluno.updateMany({
+        where: { ativo: true, email: { notIn: [...diasAtrasoMap.keys()] } },
+        data: { diasAtraso: 0 },
+      });
+    }
+
+    // 3. Update taxaAcertos/totalQuestoes for ALL CRM students based on questoes page
+    if (questoesMap.size > 0) {
+      for (const [email, { taxaAcertos, totalQuestoes }] of questoesMap) {
+        await prisma.aluno.updateMany({ where: { email }, data: { taxaAcertos, totalQuestoes } });
       }
     }
 
