@@ -11,6 +11,8 @@ type Resultado = {
   diasAtrasoDebug?: string;
   questoesDebug?: string;
   planosDebug?: string;
+  dataDebug?: string;
+  paginacaoDebug?: string;
 };
 
 export default function TutorySyncButton({ onSync }: { onSync?: () => void }) {
@@ -85,6 +87,18 @@ export default function TutorySyncButton({ onSync }: { onSync?: () => void }) {
                     <div className="flex justify-between gap-2">
                       <span className="text-slate-500 shrink-0">Planos</span>
                       <span className="font-semibold text-xs text-slate-600 text-right">{resultado.planosDebug}</span>
+                    </div>
+                  )}
+                  {resultado.dataDebug && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-slate-500 shrink-0">Dt. Início</span>
+                      <span className="font-semibold text-xs text-slate-600 text-right">{resultado.dataDebug}</span>
+                    </div>
+                  )}
+                  {resultado.paginacaoDebug && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-slate-500 shrink-0">Paginação</span>
+                      <span className="font-semibold text-xs text-slate-600 text-right">{resultado.paginacaoDebug}</span>
                     </div>
                   )}
                   {resultado.erros.length > 0 && (

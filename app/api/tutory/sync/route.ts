@@ -215,12 +215,20 @@ async function fetchPlanosAlunos(cookie: string): Promise<{ map: Map<string, str
       await Promise.all(batch);
     }
 
-    // Debug: show first 200 chars of page to help diagnose structure if 0 found
-    const estruturaDebug = map.size === 0
-      ? ` | HTML snippet: ${firstHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200)}`
-      : "";
+    // Debug: show HTML structure when 0 results to help diagnose
+    let estruturaDebug = "";
+    if (map.size === 0) {
+      const idx = firstHtml.indexOf("student-list-item");
+      if (idx >= 0) {
+        // Show 600 chars around first student block
+        estruturaDebug = ` | bloco: ${firstHtml.slice(Math.max(0, idx - 30), idx + 600).replace(/\s+/g, " ")}`;
+      } else {
+        // No student-list-item — show body structure hint
+        estruturaDebug = ` | no student-list-item | body: ${firstHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300)}`;
+      }
+    }
 
-    return { map, debug: `OK — ${map.size} plano(s) em ${totalPages} pág${estruturaDebug}` };
+    return { map, debug: `${map.size} plano(s) em ${totalPages} pág${estruturaDebug}` };
   } catch (e) {
     return { map, debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
   }
