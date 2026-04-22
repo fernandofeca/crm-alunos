@@ -10,17 +10,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!isAdmin(session)) return forbidden();
 
   const { id } = await params;
-  const { name, email, password, role } = await req.json();
+  const { name, email, password, role, permissoes } = await req.json();
 
   const data: Record<string, unknown> = { name, email, role };
   if (password) {
     data.password = await bcrypt.hash(password, 10);
   }
+  if (permissoes !== undefined) {
+    data.permissoes = JSON.stringify(permissoes);
+  }
 
   const usuario = await prisma.user.update({
     where: { id },
     data,
-    select: { id: true, name: true, email: true, role: true, createdAt: true },
+    select: { id: true, name: true, email: true, role: true, permissoes: true, createdAt: true },
   });
 
   return NextResponse.json(usuario);

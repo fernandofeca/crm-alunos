@@ -20,12 +20,14 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
+        token.permissoes = (user as { permissoes?: string }).permissoes ?? "[]";
       }
       return token;
     },
     session({ session, token }) {
       session.user.id = token.id as string;
       (session.user as { role?: string }).role = token.role as string;
+      (session.user as { permissoes?: string }).permissoes = token.permissoes as string;
       return session;
     },
   },

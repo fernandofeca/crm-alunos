@@ -12,6 +12,7 @@ model User {
   email     String    @unique
   password  String
   role      String    @default("equipe")
+  permissoes String   @default("[]")
   contatos              Contato[]
   tarefas               Tarefa[]  @relation("TarefaCriador")
   tarefasAtribuidas     Tarefa[]  @relation("TarefaResponsavel")

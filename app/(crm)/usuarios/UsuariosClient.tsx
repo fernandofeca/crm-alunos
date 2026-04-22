@@ -3,11 +3,29 @@
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 
+const PERMISSOES = [
+  { id: "criar_aluno",        label: "Criar aluno",              grupo: "Alunos" },
+  { id: "editar_aluno",       label: "Editar dados do aluno",    grupo: "Alunos" },
+  { id: "excluir_aluno",      label: "Excluir aluno",            grupo: "Alunos" },
+  { id: "importar_xls",       label: "Importar planilha XLS",    grupo: "Alunos" },
+  { id: "ativar_aluno",       label: "Ativar / inativar aluno",  grupo: "Alunos" },
+  { id: "registrar_contato",  label: "Registrar contato",        grupo: "Contatos" },
+  { id: "gerenciar_tarefas",  label: "Criar e editar tarefas",   grupo: "Tarefas" },
+  { id: "excluir_tarefa",     label: "Excluir tarefas",          grupo: "Tarefas" },
+  { id: "gerenciar_agenda",   label: "Criar e editar eventos",   grupo: "Agenda" },
+  { id: "excluir_evento",     label: "Excluir eventos",          grupo: "Agenda" },
+] as const;
+
+type PermissaoId = (typeof PERMISSOES)[number]["id"];
+
+const GRUPOS = [...new Set(PERMISSOES.map((p) => p.grupo))];
+
 type Usuario = {
   id: string;
   name: string;
   email: string;
   role: string;
+  permissoes: string;
   createdAt: string;
 };
 
@@ -16,9 +34,10 @@ type FormData = {
   email: string;
   password: string;
   role: "equipe" | "mentor";
+  bloqueadas: PermissaoId[];
 };
 
-const emptyForm: FormData = { name: "", email: "", password: "", role: "equipe" };
+const emptyForm: FormData = { name: "", email: "", password: "", role: "equipe", bloqueadas: [] };
 
 export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: Usuario[] }) {
   const { data: session } = useSession();
@@ -30,6 +49,10 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Usuario | null>(null);
 
+  function parseBloqueadas(u: Usuario): PermissaoId[] {
+    try { return JSON.parse(u.permissoes ?? "[]"); } catch { return []; }
+  }
+
   function abrirNovo() {
     setEditando(null);
     setForm(emptyForm);
@@ -39,7 +62,13 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
 
   function abrirEditar(u: Usuario) {
     setEditando(u);
-    setForm({ name: u.name, email: u.email, password: "", role: u.role as "equipe" | "mentor" });
+    setForm({
+      name: u.name,
+      email: u.email,
+      password: "",
+      role: u.role as "equipe" | "mentor",
+      bloqueadas: parseBloqueadas(u),
+    });
     setError("");
     setShowModal(true);
   }
@@ -48,6 +77,26 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
     setShowModal(false);
     setEditando(null);
     setError("");
+  }
+
+  function togglePermissao(id: PermissaoId) {
+    setForm((prev) => ({
+      ...prev,
+      bloqueadas: prev.bloqueadas.includes(id)
+        ? prev.bloqueadas.filter((x) => x !== id)
+        : [...prev.bloqueadas, id],
+    }));
+  }
+
+  function toggleGrupo(grupo: string) {
+    const ids = PERMISSOES.filter((p) => p.grupo === grupo).map((p) => p.id);
+    const allBlocked = ids.every((id) => form.bloqueadas.includes(id));
+    setForm((prev) => ({
+      ...prev,
+      bloqueadas: allBlocked
+        ? prev.bloqueadas.filter((x) => !ids.includes(x))
+        : [...new Set([...prev.bloqueadas, ...ids])],
+    }));
   }
 
   async function salvar(e: React.FormEvent) {
@@ -61,7 +110,12 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
       return;
     }
 
-    const body: Partial<FormData> = { name: form.name, email: form.email, role: form.role };
+    const body: Record<string, unknown> = {
+      name: form.name,
+      email: form.email,
+      role: form.role,
+      permissoes: form.bloqueadas,
+    };
     if (form.password) body.password = form.password;
 
     const res = editando
@@ -109,6 +163,13 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
     setConfirmDelete(null);
   }
 
+  function resumoPermissoes(u: Usuario) {
+    const bloqueadas = parseBloqueadas(u);
+    if (bloqueadas.length === 0) return { texto: "Acesso total", cor: "bg-green-100 text-green-700" };
+    if (bloqueadas.length >= PERMISSOES.length) return { texto: "Sem acesso", cor: "bg-red-100 text-red-700" };
+    return { texto: `${PERMISSOES.length - bloqueadas.length}/${PERMISSOES.length} ações`, cor: "bg-yellow-100 text-yellow-700" };
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -131,59 +192,68 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
               <th className="text-left px-4 py-3">Nome</th>
               <th className="text-left px-4 py-3">Email</th>
               <th className="text-left px-4 py-3">Papel</th>
+              <th className="text-left px-4 py-3">Permissões</th>
               <th className="text-left px-4 py-3">Desde</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {usuarios.map((u) => (
-              <tr key={u.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 font-medium text-slate-800">
-                  {u.name}
-                  {u.id === session?.user?.id && (
-                    <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
-                      Você
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-slate-500">{u.email}</td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`capitalize text-xs font-semibold px-2 py-1 rounded-full ${
-                      u.role === "mentor"
-                        ? "bg-purple-100 text-purple-700"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {u.role}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-slate-400 text-xs">
-                  {new Date(u.createdAt).toLocaleDateString("pt-BR")}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3 justify-end">
-                    <button
-                      onClick={() => abrirEditar(u)}
-                      className="text-blue-600 hover:underline text-xs"
-                    >
-                      Editar
-                    </button>
-                    {u.id !== session?.user?.id && (
-                      <button
-                        onClick={() => setConfirmDelete(u)}
-                        className="text-red-500 hover:underline text-xs"
-                      >
-                        Excluir
-                      </button>
+            {usuarios.map((u) => {
+              const { texto, cor } = resumoPermissoes(u);
+              return (
+                <tr key={u.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 font-medium text-slate-800">
+                    {u.name}
+                    {u.id === session?.user?.id && (
+                      <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                        Você
+                      </span>
                     )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">{u.email}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`capitalize text-xs font-semibold px-2 py-1 rounded-full ${
+                        u.role === "mentor"
+                          ? "bg-purple-100 text-purple-700"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {u.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${cor}`}>
+                      {texto}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-400 text-xs">
+                    {new Date(u.createdAt).toLocaleDateString("pt-BR")}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3 justify-end">
+                      <button
+                        onClick={() => abrirEditar(u)}
+                        className="text-blue-600 hover:underline text-xs"
+                      >
+                        Editar
+                      </button>
+                      {u.id !== session?.user?.id && (
+                        <button
+                          onClick={() => setConfirmDelete(u)}
+                          className="text-red-500 hover:underline text-xs"
+                        >
+                          Excluir
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {usuarios.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
                   Nenhum usuário encontrado
                 </td>
               </tr>
@@ -195,7 +265,7 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
       {/* Modal criar/editar */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-bold text-slate-800 mb-5">
               {editando ? "Editar usuário" : "Novo usuário"}
             </h2>
@@ -248,6 +318,76 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
                       {r}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Permissões */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-slate-700">Permissões</label>
+                  <div className="flex gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setForm((p) => ({ ...p, bloqueadas: [] }))}
+                      className="text-green-600 hover:underline"
+                    >
+                      Liberar tudo
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setForm((p) => ({ ...p, bloqueadas: PERMISSOES.map((x) => x.id) }))}
+                      className="text-red-500 hover:underline"
+                    >
+                      Bloquear tudo
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 mb-3">
+                  Itens marcados com <span className="text-green-600 font-medium">✓</span> estão <span className="font-medium">liberados</span>.
+                  Desmarque para bloquear.
+                </p>
+                <div className="border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-100">
+                  {GRUPOS.map((grupo) => {
+                    const perms = PERMISSOES.filter((p) => p.grupo === grupo);
+                    const allAllowed = perms.every((p) => !form.bloqueadas.includes(p.id));
+                    return (
+                      <div key={grupo}>
+                        <button
+                          type="button"
+                          onClick={() => toggleGrupo(grupo)}
+                          className="w-full flex items-center justify-between px-4 py-2 bg-slate-50 hover:bg-slate-100 transition text-left"
+                        >
+                          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{grupo}</span>
+                          <span className={`text-xs font-medium ${allAllowed ? "text-green-600" : "text-orange-500"}`}>
+                            {allAllowed ? "Tudo liberado" : "Parcial"}
+                          </span>
+                        </button>
+                        <div className="divide-y divide-slate-50">
+                          {perms.map((p) => {
+                            const liberada = !form.bloqueadas.includes(p.id);
+                            return (
+                              <label
+                                key={p.id}
+                                className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={liberada}
+                                  onChange={() => togglePermissao(p.id)}
+                                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm text-slate-700">{p.label}</span>
+                                {!liberada && (
+                                  <span className="ml-auto text-xs text-red-400">Bloqueada</span>
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

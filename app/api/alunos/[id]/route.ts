@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { canDo, forbidden } from "@/lib/permissions";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -22,6 +23,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  if (!canDo(session, "editar_aluno")) return forbidden();
 
   const { id } = await params;
   const body = await req.json();
@@ -57,7 +59,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.cpf !== undefined) campos.cpf = body.cpf;
   if (body.whatsapp !== undefined) campos.whatsapp = body.whatsapp;
   if (body.concurso !== undefined) campos.concurso = body.concurso;
-  if (body.ativo !== undefined) campos.ativo = body.ativo;
   if (body.mediaGeral !== undefined) campos.mediaGeral = body.mediaGeral;
   if (body.discMaisBaixaNome !== undefined) campos.discMaisBaixaNome = body.discMaisBaixaNome;
   if (body.discMaisBaixaNota !== undefined) campos.discMaisBaixaNota = body.discMaisBaixaNota;
@@ -67,6 +68,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.planoTipo !== undefined) campos.planoTipo = body.planoTipo;
   if (body.planoVencimento !== undefined) campos.planoVencimento = body.planoVencimento ? new Date(body.planoVencimento) : null;
 
+  if (body.ativo !== undefined) {
+    if (!canDo(session, "ativar_aluno")) return forbidden();
+    campos.ativo = body.ativo;
+  }
+
+  if (Object.keys(campos).some((k) => !["ativo"].includes(k))) {
+    if (!canDo(session, "editar_aluno")) return forbidden();
+  }
+
   const aluno = await prisma.aluno.update({ where: { id }, data: campos });
   return NextResponse.json(aluno);
 }
@@ -74,6 +84,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  if (!canDo(session, "excluir_aluno")) return forbidden();
 
   const { id } = await params;
   await prisma.aluno.delete({ where: { id } });

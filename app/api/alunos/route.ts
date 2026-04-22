@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { canDo, forbidden } from "@/lib/permissions";
 
 const PAGE_SIZE = 50;
 
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  if (!canDo(session, "criar_aluno")) return forbidden();
 
   const body = await req.json();
   const { nome, email, cpf, whatsapp, concurso, mediaGeral, disciplinas } = body;

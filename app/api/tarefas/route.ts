@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { canDo, forbidden } from "@/lib/permissions";
 
 const include = {
   aluno: { select: { id: true, nome: true } },
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  if (!canDo(session, "gerenciar_tarefas")) return forbidden();
 
   const body = await req.json();
   const tarefa = await prisma.tarefa.create({

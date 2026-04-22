@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { canDo, forbidden } from "@/lib/permissions";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  if (!canDo(session, "registrar_contato")) return forbidden();
 
   const { id } = await params;
   const body = await req.json();

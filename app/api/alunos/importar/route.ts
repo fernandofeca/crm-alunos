@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { canDo, forbidden } from "@/lib/permissions";
 
 type Linha = Record<string, unknown>;
 
@@ -48,6 +49,7 @@ function parseData(val: unknown): Date | null {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  if (!canDo(session, "importar_xls")) return forbidden();
 
   let formData: FormData;
   try {
