@@ -50,7 +50,7 @@ async function fetchTutoryAlunos(headers: Record<string, string>): Promise<Fetch
     const res = await fetch("https://admin.tutory.com.br/intent/listar-alunos", {
       method: "POST",
       headers: { ...headers, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded" },
-      body: `pagina=${pagina}&status=todos&ativo=0&todos=1`,
+      body: `pagina=${pagina}&limite=500`,
     });
     if (!res.ok) { paginacaoDebug += ` [p${pagina} HTTP ${res.status}]`; break; }
 
