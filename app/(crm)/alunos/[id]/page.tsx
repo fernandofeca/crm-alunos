@@ -16,5 +16,13 @@ export default async function AlunoPage({ params }: { params: Promise<{ id: stri
 
   if (!aluno) notFound();
 
-  return <AlunoDetalhe aluno={JSON.parse(JSON.stringify(aluno))} />;
+  const concursosRaw = await prisma.aluno.findMany({
+    select: { concurso: true },
+    distinct: ["concurso"],
+    where: { concurso: { not: "" } },
+    orderBy: { concurso: "asc" },
+  });
+  const concursos = concursosRaw.map((c) => c.concurso).filter(Boolean);
+
+  return <AlunoDetalhe aluno={JSON.parse(JSON.stringify(aluno))} concursos={concursos} />;
 }

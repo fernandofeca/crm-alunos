@@ -130,7 +130,7 @@ const statusEstudoOpcoes = [
   { value: "nao_estudou", label: "Não estudou", bgAtivo: "bg-red-500", textAtivo: "text-white" },
 ];
 
-export default function AlunoDetalhe({ aluno: initial }: { aluno: Aluno }) {
+export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno: Aluno; concursos?: string[] }) {
   const router = useRouter();
   const { data: session } = useSession();
   const [aluno, setAluno] = useState<Aluno>(initial);
@@ -238,8 +238,19 @@ export default function AlunoDetalhe({ aluno: initial }: { aluno: Aluno }) {
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs text-slate-500 mb-1 block">Concurso</label>
-                <input value={dadosForm.concurso} onChange={e => setDadosForm(p => ({ ...p, concurso: e.target.value }))}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <select
+                  value={dadosForm.concurso}
+                  onChange={e => setDadosForm(p => ({ ...p, concurso: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">— Sem concurso —</option>
+                  {concursos.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  {dadosForm.concurso && !concursos.includes(dadosForm.concurso) && (
+                    <option value={dadosForm.concurso}>{dadosForm.concurso}</option>
+                  )}
+                </select>
               </div>
             </div>
             <div className="flex gap-2">
