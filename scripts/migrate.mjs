@@ -6,12 +6,6 @@ import { fileURLToPath } from "url";
 const { Pool } = pg;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const dbVars = Object.keys(process.env).filter(k =>
-  k.includes("DATABASE") || k.includes("POSTGRES") || k.includes("PG")
-);
-console.log("Variáveis de banco encontradas:", dbVars);
-console.log("DATABASE_URL:", process.env.DATABASE_URL ? "DEFINIDA" : "INDEFINIDA");
-
 if (!process.env.DATABASE_URL) {
   console.log("DATABASE_URL não definida, pulando migration.");
   process.exit(0);
