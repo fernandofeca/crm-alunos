@@ -24,7 +24,7 @@ export default async function DashboardPage() {
     prisma.aluno.count({ where: { ativo: true } }),
     prisma.aluno.count({ where: { ativo: true, taxaAcertos: { gt: 0, lt: 60 } } }),
     prisma.aluno.count({ where: { ativo: true, contatos: { none: {} } } }),
-    prisma.aluno.count({ where: { ativo: true, tutoryCreatedAt: { gte: trinta } } }),
+    prisma.aluno.count({ where: { ativo: true, dataInicio: { gte: trinta } } }),
     prisma.aluno.count({ where: { ativo: true, diasAtraso: 0 } }),
     prisma.aluno.count({ where: { ativo: true, diasAtraso: 1 } }),
     prisma.aluno.count({ where: { ativo: true, diasAtraso: 2 } }),

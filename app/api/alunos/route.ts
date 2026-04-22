@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   } else if (filtro === "novos") {
     const trinta = new Date();
     trinta.setDate(trinta.getDate() - 30);
-    where.tutoryCreatedAt = { gte: trinta };
+    where.dataInicio = { gte: trinta };
   } else if (filtro === "sem_contato") {
     where.contatos = { none: {} };
   } else if (filtro === "acompanhar") {

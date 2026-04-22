@@ -269,6 +269,14 @@ export async function POST() {
       });
     }
 
+    // 2b. Auto-flag "Acompanhar de Perto" for new students (dataInicio <= 30d) with 4+ days delay
+    const trintaDias = new Date();
+    trintaDias.setDate(trintaDias.getDate() - 30);
+    await prisma.aluno.updateMany({
+      where: { ativo: true, dataInicio: { gte: trintaDias }, diasAtraso: { gte: 4 } },
+      data: { acompanharDePerto: true },
+    });
+
     // 3. Update taxaAcertos/totalQuestoes for ALL CRM students based on questoes page
     let questoesAtualizados = 0;
     if (questoesMap.size > 0) {
