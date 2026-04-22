@@ -24,11 +24,28 @@ type Aluno = {
   cpf: string;
   whatsapp: string;
   concurso: string;
+  planoTipo: string;
   mediaGeral: number;
-  estudouUltimos7d: boolean;
+  statusEstudo: string;
   disciplinas: Disciplina[];
   contatos: Contato[];
 };
+
+const STATUS_ESTUDO = [
+  { value: "todos_dias", label: "Todos os dias", ativo: "bg-green-500 text-white border-green-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "mais_3_dias", label: "Mais de 3 dias", ativo: "bg-lime-500 text-white border-lime-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "menos_3_dias", label: "Menos de 3 dias", ativo: "bg-orange-500 text-white border-orange-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "nao_estudou", label: "Não estudou", ativo: "bg-red-500 text-white border-red-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+];
+
+const STATUS_COR: Record<string, string> = {
+  todos_dias: "text-green-600",
+  mais_3_dias: "text-lime-600",
+  menos_3_dias: "text-orange-500",
+  nao_estudou: "text-red-500",
+};
+
+const PLANOS = ["Mentoria da Posse", "Mentoria Diamante", "Cronograma Ouro", "Cronograma Outros"];
 
 function whatsappUrl(numero: string) {
   const limpo = numero.replace(/\D/g, "");
@@ -59,22 +76,24 @@ export default function AlunosClient({
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState("");
   const [concursoFiltro, setConcursoFiltro] = useState("");
+  const [planoFiltro, setPlanoFiltro] = useState("");
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(totalInicial);
   const pageSize = 50;
 
   useEffect(() => {
-    buscar("", "", "", 0);
+    buscar("", "", "", "", 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function buscar(query: string, f: string, concurso: string, p: number) {
+  async function buscar(query: string, f: string, concurso: string, plano: string, p: number) {
     setLoading(true);
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (f) params.set("filtro", f);
     if (concurso) params.set("concurso", concurso);
+    if (plano) params.set("planoTipo", plano);
     params.set("page", String(p));
     const res = await fetch(`/api/alunos?${params}`);
     const data = await res.json();
@@ -86,70 +105,61 @@ export default function AlunosClient({
 
   function handleQ(v: string) {
     setQ(v);
-    buscar(v, filtro, concursoFiltro, 0);
+    buscar(v, filtro, concursoFiltro, planoFiltro, 0);
   }
 
   function handleFiltro(v: string) {
     const next = filtro === v ? "" : v;
     setFiltro(next);
-    buscar(q, next, concursoFiltro, 0);
+    buscar(q, next, concursoFiltro, planoFiltro, 0);
   }
 
   function handleConcurso(v: string) {
     setConcursoFiltro(v);
-    buscar(q, filtro, v, 0);
+    buscar(q, filtro, v, planoFiltro, 0);
   }
 
-  async function toggleEstudou(aluno: Aluno) {
-    const res = await fetch(`/api/alunos/${aluno.id}/estudou`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estudouUltimos7d: !aluno.estudouUltimos7d }),
-    });
-    if (res.ok) {
-      setAlunos((prev) =>
-        prev.map((a) =>
-          a.id === aluno.id ? { ...a, estudouUltimos7d: !a.estudouUltimos7d } : a
-        )
-      );
-    }
+  function handlePlano(v: string) {
+    setPlanoFiltro(v);
+    buscar(q, filtro, concursoFiltro, v, 0);
   }
 
   const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-        <input
-          type="text"
-          placeholder="Buscar por nome, email ou CPF..."
-          value={q}
-          onChange={(e) => handleQ(e.target.value)}
-          className="border border-slate-300 rounded-lg px-3 py-2 text-sm flex-1 min-w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        {concursos.length > 0 && (
+      <div className="flex flex-col gap-3">
+        {/* Linha 1: busca + selects */}
+        <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+          <input
+            type="text"
+            placeholder="Buscar por nome, email ou CPF..."
+            value={q}
+            onChange={(e) => handleQ(e.target.value)}
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm flex-1 min-w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {concursos.length > 0 && (
+            <select
+              value={concursoFiltro}
+              onChange={(e) => handleConcurso(e.target.value)}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">Todos os concursos</option>
+              {concursos.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          )}
           <select
-            value={concursoFiltro}
-            onChange={(e) => handleConcurso(e.target.value)}
+            value={planoFiltro}
+            onChange={(e) => handlePlano(e.target.value)}
             className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
-            <option value="">Todos os concursos</option>
-            {concursos.map((c) => (
-              <option key={c} value={c}>{c}</option>
+            <option value="">Todos os planos</option>
+            {PLANOS.map((p) => (
+              <option key={p} value={p}>{p}</option>
             ))}
           </select>
-        )}
-        <div className="flex gap-2">
-          <button
-            onClick={() => handleFiltro("sem_estudo")}
-            className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
-              filtro === "sem_estudo"
-                ? "bg-orange-500 text-white border-orange-500"
-                : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            Sem estudar
-          </button>
           <button
             onClick={() => handleFiltro("nota_baixa")}
             className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
@@ -161,6 +171,22 @@ export default function AlunosClient({
             Nota baixa
           </button>
         </div>
+
+        {/* Linha 2: filtros de status de estudo */}
+        <div className="flex flex-wrap gap-2">
+          <span className="text-xs text-slate-500 self-center">Status estudo:</span>
+          {STATUS_ESTUDO.map((s) => (
+            <button
+              key={s.value}
+              onClick={() => handleFiltro(s.value)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                filtro === s.value ? s.ativo : s.inativo
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && <p className="text-sm text-slate-400">Buscando...</p>}
@@ -170,12 +196,12 @@ export default function AlunosClient({
           <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
             <tr>
               <th className="text-left px-4 py-3">Aluno</th>
-              <th className="text-left px-4 py-3">Concurso</th>
+              <th className="text-left px-4 py-3">Concurso / Plano</th>
               <th className="text-left px-4 py-3">WhatsApp</th>
               <th className="text-left px-4 py-3">Média</th>
               <th className="text-left px-4 py-3">Disciplina baixa</th>
               <th className="text-left px-4 py-3">Assunto baixo</th>
-              <th className="text-left px-4 py-3">Estudou (7d)</th>
+              <th className="text-left px-4 py-3">Status Estudo</th>
               <th className="text-left px-4 py-3">Último contato</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -185,6 +211,7 @@ export default function AlunosClient({
               const disc = disciplinaMaisBaixa(a.disciplinas);
               const assunto = assuntoMaisBaixo(a.disciplinas);
               const ultimoContato = a.contatos[0];
+              const statusInfo = STATUS_ESTUDO.find((s) => s.value === a.statusEstudo);
               return (
                 <tr key={a.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
@@ -192,14 +219,18 @@ export default function AlunosClient({
                     <div className="text-xs text-slate-400">{a.email}</div>
                     {a.cpf && <div className="text-xs text-slate-400">CPF: {a.cpf}</div>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 space-y-1">
                     {a.concurso ? (
-                      <span className="text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-1 rounded-full">
+                      <span className="block text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-0.5 rounded-full w-fit">
                         {a.concurso}
                       </span>
-                    ) : (
-                      <span className="text-slate-300">—</span>
-                    )}
+                    ) : null}
+                    {a.planoTipo ? (
+                      <span className="block text-xs bg-purple-50 text-purple-700 font-medium px-2 py-0.5 rounded-full w-fit">
+                        {a.planoTipo}
+                      </span>
+                    ) : null}
+                    {!a.concurso && !a.planoTipo && <span className="text-slate-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     {a.whatsapp ? (
@@ -244,16 +275,9 @@ export default function AlunosClient({
                     ) : <span className="text-slate-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => toggleEstudou(a)}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
-                        a.estudouUltimos7d
-                          ? "bg-green-100 text-green-700 hover:bg-green-200"
-                          : "bg-orange-100 text-orange-700 hover:bg-orange-200"
-                      }`}
-                    >
-                      {a.estudouUltimos7d ? "Sim" : "Não"}
-                    </button>
+                    <span className={`text-xs font-medium ${STATUS_COR[a.statusEstudo] ?? "text-slate-400"}`}>
+                      {statusInfo?.label ?? "—"}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-slate-500">
                     {ultimoContato ? (
@@ -293,14 +317,14 @@ export default function AlunosClient({
         {totalPages > 1 && (
           <div className="flex gap-2">
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, page - 1)}
+              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, page - 1)}
               disabled={page === 0 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               ← Anterior
             </button>
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, page + 1)}
+              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, page + 1)}
               disabled={page >= totalPages - 1 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >

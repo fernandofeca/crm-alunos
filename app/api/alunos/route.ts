@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q") ?? "";
   const filtro = searchParams.get("filtro") ?? "";
   const concurso = searchParams.get("concurso") ?? "";
+  const planoTipo = searchParams.get("planoTipo") ?? "";
   const page = Math.max(0, parseInt(searchParams.get("page") ?? "0", 10));
 
   const where: Record<string, unknown> = {};
@@ -23,9 +24,18 @@ export async function GET(req: NextRequest) {
       { cpf: { contains: q } },
     ];
   }
-  if (filtro === "sem_estudo") where.estudouUltimos7d = false;
+
+  const statusEstudoMap: Record<string, string> = {
+    todos_dias: "todos_dias",
+    mais_3_dias: "mais_3_dias",
+    menos_3_dias: "menos_3_dias",
+    nao_estudou: "nao_estudou",
+  };
   if (filtro === "nota_baixa") where.mediaGeral = { lt: 6 };
+  else if (statusEstudoMap[filtro]) where.statusEstudo = statusEstudoMap[filtro];
+
   if (concurso) where.concurso = concurso;
+  if (planoTipo) where.planoTipo = planoTipo;
 
   const [alunos, total] = await Promise.all([
     prisma.aluno.findMany({

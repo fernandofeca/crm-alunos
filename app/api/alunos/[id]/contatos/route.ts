@@ -15,6 +15,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       userId: (session.user?.id ?? "") as string,
       tipo: body.tipo,
       obs: body.obs ?? "",
+      ...(body.data ? { data: new Date(body.data) } : {}),
     },
     include: { user: true },
   });

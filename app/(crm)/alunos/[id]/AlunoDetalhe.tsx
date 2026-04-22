@@ -136,6 +136,7 @@ export default function AlunoDetalhe({ aluno: initial }: { aluno: Aluno }) {
   const [aluno, setAluno] = useState<Aluno>(initial);
   const [tipoContato, setTipoContato] = useState<"mentor" | "equipe">("equipe");
   const [obsContato, setObsContato] = useState("");
+  const [dataContato, setDataContato] = useState("");
   const [savingContato, setSavingContato] = useState(false);
   const [savingAtivo, setSavingAtivo] = useState(false);
   const [editandoDados, setEditandoDados] = useState(false);
@@ -192,7 +193,7 @@ export default function AlunoDetalhe({ aluno: initial }: { aluno: Aluno }) {
     const res = await fetch(`/api/alunos/${aluno.id}/contatos`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tipo: tipoContato, obs: obsContato }),
+      body: JSON.stringify({ tipo: tipoContato, obs: obsContato, data: dataContato || undefined }),
     });
     if (res.ok) {
       const novo = await res.json();
@@ -455,6 +456,16 @@ export default function AlunoDetalhe({ aluno: initial }: { aluno: Aluno }) {
                   {t}
                 </button>
               ))}
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Data do contato</label>
+              <input
+                type="date"
+                value={dataContato}
+                onChange={(e) => setDataContato(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-slate-400 mt-0.5">Deixe em branco para usar a data de hoje</p>
             </div>
             <textarea
               value={obsContato}
