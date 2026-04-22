@@ -25,7 +25,7 @@ export default function Navbar() {
           <Link href="/tarefas" className="text-slate-600 hover:text-blue-600 transition">
             Tarefas
           </Link>
-          {(session?.user as { role?: string })?.role === "admin" && (
+          {(session?.user as { role?: string })?.role?.toLowerCase() === "admin" && (
             <Link href="/usuarios" className="text-slate-600 hover:text-blue-600 transition">
               Usuários
             </Link>
