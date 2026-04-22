@@ -132,15 +132,85 @@ async function fetchDiasAtraso(headers: Record<string, string>): Promise<{ map: 
   }
 }
 
+type QuestaoInfo = { taxaAcertos: number; totalQuestoes: number };
+
+// Returns map of email (lowercase) -> questao stats from /alunos/questoes (last 30 days)
+async function fetchQuestoes(cookie: string): Promise<Map<string, QuestaoInfo>> {
+  const map = new Map<string, QuestaoInfo>();
+  try {
+    function parsePage(html: string) {
+      // Each row: <td>nome</td><td>questoes</td><td>acertos</td><td>XX.XX%</td><td><a href='mailto:email'>
+      const rows = html.split("<tr>").slice(2); // skip header rows
+      for (const row of rows) {
+        const emailMatch = row.match(/href='mailto:([^']+)'/);
+        const taxaMatch = row.match(/([\d,]+(?:\.\d+)?)\s*%/);
+        const cells = [...row.matchAll(/<td[^>]*>\s*([\d.,]+)\s*<\/td>/g)];
+        if (!emailMatch || !taxaMatch || cells.length < 2) continue;
+        const email = emailMatch[1].toLowerCase().trim();
+        const taxa = parseFloat(taxaMatch[1].replace(",", "."));
+        // questoes is first numeric cell (Brazilian format: "2.115" = 2115)
+        const totalQuestoes = parseInt(cells[0][1].replace(/\./g, "").replace(",", ""), 10);
+        if (email && !isNaN(taxa) && !isNaN(totalQuestoes)) {
+          map.set(email, { taxaAcertos: taxa, totalQuestoes });
+        }
+      }
+    }
+
+    const firstHtml = await fetch("https://admin.tutory.com.br/alunos/questoes?t=30&p=1", {
+      headers: { Cookie: cookie },
+    }).then((r) => r.text());
+
+    if (firstHtml.includes('document.location.href = "/login"')) return map;
+    parsePage(firstHtml);
+
+    const totalPagesMatch = firstHtml.match(/href="\?t=30&p=(\d+)">Última/);
+    const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1], 10) : 1;
+
+    for (let start = 2; start <= totalPages; start += 5) {
+      const batch = [];
+      for (let p = start; p < start + 5 && p <= totalPages; p++) {
+        batch.push(
+          fetch(`https://admin.tutory.com.br/alunos/questoes?t=30&p=${p}`, { headers: { Cookie: cookie } })
+            .then((r) => r.text())
+            .then(parsePage)
+        );
+      }
+      await Promise.all(batch);
+    }
+  } catch {
+    // Non-fatal
+  }
+  return map;
+}
+
 export async function POST() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
   try {
     const headers = await getAuthHeaders();
-    const [tutoryAlunos, { map: diasAtrasoMap, debug: diasAtrasoDebug }] = await Promise.all([
+
+    // Get session cookie for HTML scraping
+    let sessionCookie: string | undefined;
+    if (!headers["Cookie"]) {
+      const account = process.env.TUTORY_ACCOUNT ?? "";
+      const password = process.env.TUTORY_PASSWORD ?? "";
+      const loginRes = await fetch("https://admin.tutory.com.br/intent/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" },
+        body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
+      });
+      sessionCookie = loginRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
+    } else {
+      sessionCookie = headers["Cookie"].match(/PHPSESSID=[^;]+/)?.[0];
+    }
+
+    const cookieHeader = sessionCookie ?? "";
+
+    const [tutoryAlunos, { map: diasAtrasoMap, debug: diasAtrasoDebug }, questoesMap] = await Promise.all([
       fetchTutoryAlunos(headers),
       fetchDiasAtraso(headers),
+      cookieHeader ? fetchQuestoes(cookieHeader) : Promise.resolve(new Map<string, QuestaoInfo>()),
     ]);
 
     if (tutoryAlunos.length === 0) {
@@ -159,6 +229,9 @@ export async function POST() {
         const concurso = t.plano_nome ?? "";
         const planoVencimento = t.dt_expiracao ? new Date(t.dt_expiracao) : null;
         const diasAtraso = diasAtrasoMap.get(email) ?? 0;
+        const questao = questoesMap.get(email);
+        const taxaAcertos = questao?.taxaAcertos ?? undefined;
+        const totalQuestoes = questao?.totalQuestoes ?? undefined;
 
         // Match by email first, then CPF (only real CPFs, 11 digits, not sequential)
         let existente = email ? await prisma.aluno.findUnique({ where: { email } }) : null;
@@ -177,6 +250,8 @@ export async function POST() {
               planoVencimento,
               ativo,
               diasAtraso,
+              ...(taxaAcertos !== undefined ? { taxaAcertos } : {}),
+              ...(totalQuestoes !== undefined ? { totalQuestoes } : {}),
               ...(cpf && !existente.cpf ? { cpf } : {}),
             },
           });
@@ -193,6 +268,8 @@ export async function POST() {
               planoVencimento,
               ativo: true,
               diasAtraso,
+              ...(taxaAcertos !== undefined ? { taxaAcertos } : {}),
+              ...(totalQuestoes !== undefined ? { totalQuestoes } : {}),
             },
           });
           resultados.criados++;
@@ -202,7 +279,7 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug });
+    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesSync: questoesMap.size });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro na sincronização" },

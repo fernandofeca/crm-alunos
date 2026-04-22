@@ -25,7 +25,8 @@ type Aluno = {
   whatsapp: string;
   concurso: string;
   planoTipo: string;
-  mediaGeral: number;
+  taxaAcertos: number;
+  totalQuestoes: number;
   statusEstudo: string;
   diasAtraso: number;
   disciplinas: Disciplina[];
@@ -47,6 +48,13 @@ const STATUS_COR: Record<string, string> = {
 };
 
 const PLANOS = ["Mentoria da Posse", "Mentoria Diamante", "Cronograma Ouro", "Cronograma Outros"];
+
+function taxaCor(taxa: number): string {
+  if (taxa <= 49.9) return "bg-red-100 text-red-700";
+  if (taxa <= 70) return "bg-yellow-100 text-yellow-700";
+  if (taxa <= 80) return "bg-blue-100 text-blue-700";
+  return "bg-green-100 text-green-700";
+}
 
 function whatsappUrl(numero: string) {
   const limpo = numero.replace(/\D/g, "");
@@ -176,7 +184,7 @@ export default function AlunosClient({
                 : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
             }`}
           >
-            Nota baixa
+            Taxa baixa
           </button>
           <button
             onClick={() => handleApenasAtivos(!apenasAtivos)}
@@ -216,7 +224,7 @@ export default function AlunosClient({
               <th className="text-left px-4 py-3">Aluno</th>
               <th className="text-left px-4 py-3">Concurso</th>
               <th className="text-left px-4 py-3">WhatsApp</th>
-              <th className="text-left px-4 py-3">Média</th>
+              <th className="text-left px-4 py-3">Taxa Acertos</th>
               <th className="text-left px-4 py-3">Disciplina baixa</th>
               <th className="text-left px-4 py-3">Assunto baixo</th>
               <th className="text-left px-4 py-3">Status Estudo</th>
@@ -265,9 +273,13 @@ export default function AlunosClient({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`font-semibold ${a.mediaGeral < 6 ? "text-red-600" : "text-green-600"}`}>
-                      {a.mediaGeral.toFixed(1)}
-                    </span>
+                    {a.taxaAcertos > 0 ? (
+                      <span className={`inline-block font-bold text-sm px-2 py-0.5 rounded-full ${taxaCor(a.taxaAcertos)}`}>
+                        {a.taxaAcertos.toFixed(1)}%
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {disc ? (

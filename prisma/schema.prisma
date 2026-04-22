@@ -39,6 +39,8 @@ model Aluno {
   assuntoMaisBaixoNome String  @default("")
   assuntoMaisBaixoNota Float   @default(0)
   diasAtraso          Int      @default(0)
+  taxaAcertos         Float    @default(0)
+  totalQuestoes       Int      @default(0)
   disciplinas      Disciplina[]
   contatos         Contato[]
   tarefas          Tarefa[]

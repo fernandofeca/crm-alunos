@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     menos_3_dias: "menos_3_dias",
     nao_estudou: "nao_estudou",
   };
-  if (filtro === "nota_baixa") where.mediaGeral = { lt: 6 };
+  if (filtro === "nota_baixa") where.taxaAcertos = { lt: 60 };
   else if (statusEstudoMap[filtro]) where.statusEstudo = statusEstudoMap[filtro];
 
   if (concurso) where.concurso = concurso;

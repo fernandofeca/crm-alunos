@@ -14,7 +14,8 @@ type Aluno = {
   cpf: string;
   whatsapp: string;
   concurso: string;
-  mediaGeral: number;
+  taxaAcertos: number;
+  totalQuestoes: number;
   ativo: boolean;
   estudouUltimos7d: boolean;
   statusEstudo: string;
@@ -28,6 +29,13 @@ type Aluno = {
   disciplinas: Disciplina[];
   contatos: Contato[];
 };
+
+function taxaCor(taxa: number) {
+  if (taxa <= 49.9) return { bg: "bg-red-50", text: "text-red-600", badge: "bg-red-100 text-red-700" };
+  if (taxa <= 70)   return { bg: "bg-yellow-50", text: "text-yellow-600", badge: "bg-yellow-100 text-yellow-700" };
+  if (taxa <= 80)   return { bg: "bg-blue-50", text: "text-blue-600", badge: "bg-blue-100 text-blue-700" };
+  return { bg: "bg-green-50", text: "text-green-600", badge: "bg-green-100 text-green-700" };
+}
 
 function whatsappUrl(numero: string) {
   const limpo = numero.replace(/\D/g, "");
@@ -143,8 +151,6 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
   const [editandoDados, setEditandoDados] = useState(false);
   const [dadosForm, setDadosForm] = useState({ nome: "", email: "", cpf: "", whatsapp: "", concurso: "" });
   const [savingDados, setSavingDados] = useState(false);
-  const [editandoMedia, setEditandoMedia] = useState(false);
-  const [mediaInput, setMediaInput] = useState("");
 
   function abrirEdicao() {
     setDadosForm({ nome: aluno.nome, email: aluno.email, cpf: aluno.cpf, whatsapp: aluno.whatsapp, concurso: aluno.concurso });
@@ -174,11 +180,6 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
     setSavingAtivo(false);
   }
 
-  async function salvarMedia() {
-    const v = parseNota(mediaInput);
-    if (v !== null) await patchAluno({ mediaGeral: v } as Partial<Aluno>);
-    setEditandoMedia(false);
-  }
 
   async function salvarDisc(nome: string, nota: number) {
     await patchAluno({ discMaisBaixaNome: nome, discMaisBaixaNota: nota } as Partial<Aluno>);
@@ -311,28 +312,18 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
             </button>
           </div>
 
-          {/* Média Geral */}
-          <div
-            className="bg-slate-50 rounded-lg p-4 cursor-pointer hover:bg-slate-100 transition"
-            onClick={() => { if (!editandoMedia) { setMediaInput(aluno.mediaGeral.toFixed(1)); setEditandoMedia(true); } }}
-          >
-            <p className="text-xs text-slate-500 mb-1">Média Geral</p>
-            {editandoMedia ? (
-              <input
-                autoFocus
-                type="text"
-                value={mediaInput}
-                onChange={(e) => setMediaInput(e.target.value)}
-                onBlur={salvarMedia}
-                onKeyDown={(e) => { if (e.key === "Enter") salvarMedia(); if (e.key === "Escape") setEditandoMedia(false); }}
-                onClick={(e) => e.stopPropagation()}
-                className="w-full text-2xl font-bold bg-white border border-blue-400 rounded px-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+          {/* Taxa de Acertos */}
+          <div className={`rounded-lg p-4 ${aluno.taxaAcertos > 0 ? taxaCor(aluno.taxaAcertos).bg : "bg-slate-50"}`}>
+            <p className="text-xs text-slate-500 mb-1">Taxa de Acertos</p>
+            {aluno.taxaAcertos > 0 ? (
+              <div>
+                <p className={`text-2xl font-bold ${taxaCor(aluno.taxaAcertos).text}`}>
+                  {aluno.taxaAcertos.toFixed(1)}%
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">{aluno.totalQuestoes.toLocaleString("pt-BR")} questões</p>
+              </div>
             ) : (
-              <p className={`text-2xl font-bold ${aluno.mediaGeral < 6 ? "text-red-600" : "text-green-600"}`}>
-                {aluno.mediaGeral.toFixed(1)}
-                <span className="text-xs text-slate-400 ml-1 font-normal">✎</span>
-              </p>
+              <p className="text-lg font-bold text-slate-300">—</p>
             )}
           </div>
 
