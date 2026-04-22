@@ -1,10 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import AlunosClient from "./AlunosClient";
+import { auth } from "@/auth";
+import { isAdmin } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 export default async function AlunosPage() {
+  const session = await auth();
+  const admin = isAdmin(session);
+
   const [total, concursosRaw] = await Promise.all([
     prisma.aluno.count({ where: { ativo: true } }),
     prisma.aluno.findMany({
@@ -25,12 +30,14 @@ export default async function AlunosPage() {
           <p className="text-sm text-slate-500">{total} alunos ativos</p>
         </div>
         <div className="flex gap-2">
-          <Link
-            href="/alunos/importar"
-            className="border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm font-semibold px-4 py-2 rounded-lg transition"
-          >
-            Importar XLS
-          </Link>
+          {admin && (
+            <Link
+              href="/alunos/importar"
+              className="border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm font-semibold px-4 py-2 rounded-lg transition"
+            >
+              Importar XLS
+            </Link>
+          )}
           <Link
             href="/alunos/novo"
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"

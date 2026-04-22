@@ -2,10 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { isAdmin, forbidden } from "@/lib/permissions";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  if (!isAdmin(session)) return forbidden();
 
   const { id } = await params;
   const { name, email, password, role } = await req.json();
@@ -27,6 +29,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  if (!isAdmin(session)) return forbidden();
 
   const { id } = await params;
   const sessionId = session.user?.id;
