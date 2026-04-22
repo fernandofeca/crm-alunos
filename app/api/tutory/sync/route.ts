@@ -86,27 +86,47 @@ async function fetchDiasAtraso(headers: Record<string, string>): Promise<{ map: 
       if (!cookie) return { map, debug: `Login falhou (status ${res.status})` };
     }
 
-    const atrasoRes = await fetch("https://admin.tutory.com.br/alunos/atraso", {
-      headers: { Cookie: cookie },
-    });
-    const html = await atrasoRes.text();
+    function parsePage(html: string) {
+      const blocks = html.split('class="student-list-item"');
+      for (const block of blocks.slice(1)) {
+        const searchMatch = block.match(/data-search="([^"]+)"/);
+        const diasMatch = block.match(/(\d+)\s+dias/);
+        if (!searchMatch || !diasMatch) continue;
+        const parts = searchMatch[1].trim().split(" ");
+        const email = parts[parts.length - 1].toLowerCase();
+        const dias = parseInt(diasMatch[1], 10);
+        if (email && dias > 0) map.set(email, dias);
+      }
+    }
 
-    if (html.includes('document.location.href = "/login"')) {
+    // Fetch first page to find total pages
+    const firstHtml = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", {
+      headers: { Cookie: cookie },
+    }).then((r) => r.text());
+
+    if (firstHtml.includes('document.location.href = "/login"')) {
       return { map, debug: "Cookie inválido — página redirecionou para login" };
     }
 
-    // Each student block: data-search="name email" ... X dias
-    const blocks = html.split('class="student-list-item"');
-    for (const block of blocks.slice(1)) {
-      const searchMatch = block.match(/data-search="([^"]+)"/);
-      const diasMatch = block.match(/(\d+)\s+dias/);
-      if (!searchMatch || !diasMatch) continue;
-      const parts = searchMatch[1].trim().split(" ");
-      const email = parts[parts.length - 1].toLowerCase();
-      const dias = parseInt(diasMatch[1], 10);
-      if (email && dias > 0) map.set(email, dias);
+    parsePage(firstHtml);
+
+    const totalPagesMatch = firstHtml.match(/href="\?p=(\d+)">Última/);
+    const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1], 10) : 1;
+
+    // Fetch remaining pages in parallel (batches of 5)
+    for (let start = 2; start <= totalPages; start += 5) {
+      const batch = [];
+      for (let p = start; p < start + 5 && p <= totalPages; p++) {
+        batch.push(
+          fetch(`https://admin.tutory.com.br/alunos/atraso?p=${p}`, { headers: { Cookie: cookie } })
+            .then((r) => r.text())
+            .then(parsePage)
+        );
+      }
+      await Promise.all(batch);
     }
-    return { map, debug: `OK — ${map.size} aluno(s) com atraso encontrados` };
+
+    return { map, debug: `OK — ${map.size} aluno(s) com atraso em ${totalPages} página(s)` };
   } catch (e) {
     return { map, debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
   }
