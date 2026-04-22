@@ -138,15 +138,40 @@ async function fetchPlanosRelatorio(cookie: string): Promise<{ map: Map<string, 
         : `https://admin.tutory.com.br${downloadMatch[1]}`;
       const dlRes = await fetch(dlUrl, { headers: { Cookie: cookie } });
       const contentType = dlRes.headers.get("content-type") ?? "?";
-      const csv = await dlRes.text();
-      if (csv.length > 200) {
-        const sep = csv.split("\n")[0].includes(";") ? ";" : ",";
-        const headers = csv.split("\n")[0].replace(/^﻿/, "").split(sep).map(h => h.trim().replace(/['"]/g, ""));
-        parseCSV(csv, map);
-        const path = dlUrl.replace("https://admin.tutory.com.br", "");
-        return { map, debug: `${map.size} plano(s) via ${path} | tipo: ${contentType.slice(0, 30)} | colunas: ${headers.join(", ")}` };
+      const body = await dlRes.text();
+
+      // If HTML page, look inside for the actual CSV download trigger
+      if (contentType.includes("html")) {
+        // Look for direct CSV/Excel download links or form actions
+        const csvMatch =
+          body.match(/href=['"]([^'"]*(?:download|export|csv|xlsx|xls|cadastro)[^'"]*)['"]/i) ??
+          body.match(/action=['"]([^'"]+)['"]/i);
+        if (csvMatch) {
+          const csvUrl = csvMatch[1].startsWith("http")
+            ? csvMatch[1]
+            : `https://admin.tutory.com.br${csvMatch[1]}`;
+          const csvRes = await fetch(csvUrl, { headers: { Cookie: cookie } });
+          const csvBody = await csvRes.text();
+          const csvType = csvRes.headers.get("content-type") ?? "";
+          if (!csvType.includes("html") && csvBody.length > 200) {
+            parseCSV(csvBody, map);
+            const sep = csvBody.split("\n")[0].includes(";") ? ";" : ",";
+            const cols = csvBody.split("\n")[0].replace(/^﻿/, "").split(sep).map(h => h.trim().replace(/['"]/g, "")).join(", ");
+            return { map, debug: `${map.size} plano(s) via ${csvUrl.replace("https://admin.tutory.com.br", "")} | colunas: ${cols}` };
+          }
+        }
+        const snippet = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+        return { map, debug: `${dlUrl.replace("https://admin.tutory.com.br", "")} é HTML | snippet: ${snippet}` };
       }
-      return { map, debug: `${dlUrl.replace("https://admin.tutory.com.br", "")} vazio (${csv.length}b) | tipo: ${contentType}` };
+
+      if (body.length > 200) {
+        const sep = body.split("\n")[0].includes(";") ? ";" : ",";
+        const cols = body.split("\n")[0].replace(/^﻿/, "").split(sep).map(h => h.trim().replace(/['"]/g, "")).join(", ");
+        parseCSV(body, map);
+        const path = dlUrl.replace("https://admin.tutory.com.br", "");
+        return { map, debug: `${map.size} plano(s) via ${path} | colunas: ${cols}` };
+      }
+      return { map, debug: `${dlUrl.replace("https://admin.tutory.com.br", "")} vazio (${body.length}b)` };
     }
 
     // Show page structure for diagnosis
@@ -168,7 +193,7 @@ function parseCSV(csv: string, map: Map<string, string>) {
 
   // Find email and plan columns (flexible naming)
   const emailIdx = headers.findIndex((h) => h.includes("email") || h.includes("e-mail"));
-  const planoIdx = headers.findIndex((h) => h.includes("plano") || h.includes("plan") || h.includes("produto") || h.includes("product"));
+  const planoIdx = headers.findIndex((h) => h.includes("concurso") || h.includes("plano") || h.includes("plan") || h.includes("produto") || h.includes("product"));
 
   if (emailIdx === -1 || planoIdx === -1) return;
 
