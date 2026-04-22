@@ -112,6 +112,70 @@ async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, numbe
 }
 
 
+// Downloads the "relação de cadastros" report from /loja/relatorios
+// Returns map of email -> plano_nome for all students
+async function fetchPlanosRelatorio(cookie: string): Promise<{ map: Map<string, string>; debug: string }> {
+  const map = new Map<string, string>();
+  try {
+    // First, probe the reports page to find the actual download URL
+    const pageRes = await fetch("https://admin.tutory.com.br/loja/relatorios", {
+      headers: { Cookie: cookie },
+    });
+    const pageHtml = await pageRes.text();
+
+    if (pageHtml.length < 200) {
+      return { map, debug: `Página /loja/relatorios pequena (${pageHtml.length}b): "${pageHtml.slice(0, 100).replace(/\s+/g, " ")}"` };
+    }
+
+    // Look for download links or form actions pointing to the cadastros report
+    const downloadMatch =
+      pageHtml.match(/href=['"]([^'"]*(?:cadastro|download|export|csv)[^'"]*)['"]/i) ??
+      pageHtml.match(/action=['"]([^'"]*relatorio[^'"]*)['"]/i);
+
+    if (downloadMatch) {
+      const dlUrl = downloadMatch[1].startsWith("http")
+        ? downloadMatch[1]
+        : `https://admin.tutory.com.br${downloadMatch[1]}`;
+      const dlRes = await fetch(dlUrl, { headers: { Cookie: cookie } });
+      const csv = await dlRes.text();
+      if (csv.length > 200) {
+        parseCSV(csv, map);
+        return { map, debug: `${map.size} plano(s) via ${dlUrl.replace("https://admin.tutory.com.br", "")}` };
+      }
+    }
+
+    // Show page structure for diagnosis
+    const snippet = pageHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 400);
+    return { map, debug: `página OK (${pageHtml.length}b) mas sem link de download encontrado | snippet: ${snippet}` };
+  } catch (e) {
+    return { map, debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+function parseCSV(csv: string, map: Map<string, string>) {
+  // Remove BOM and normalize line endings
+  const lines = csv.replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
+  if (lines.length < 2) return;
+
+  // Detect separator: semicolon (pt-BR) or comma
+  const sep = lines[0].includes(";") ? ";" : ",";
+  const headers = lines[0].split(sep).map((h) => h.trim().toLowerCase().replace(/['"]/g, ""));
+
+  // Find email and plan columns (flexible naming)
+  const emailIdx = headers.findIndex((h) => h.includes("email") || h.includes("e-mail"));
+  const planoIdx = headers.findIndex((h) => h.includes("plano") || h.includes("plan") || h.includes("produto") || h.includes("product"));
+
+  if (emailIdx === -1 || planoIdx === -1) return;
+
+  for (const line of lines.slice(1)) {
+    if (!line.trim()) continue;
+    const cols = line.split(sep).map((c) => c.trim().replace(/^["']|["']$/g, ""));
+    const email = cols[emailIdx]?.toLowerCase().trim();
+    const plano = cols[planoIdx]?.trim();
+    if (email?.includes("@") && plano) map.set(email, plano);
+  }
+}
+
 type QuestaoInfo = { taxaAcertos: number; totalQuestoes: number };
 
 // Returns map of email (lowercase) -> questao stats from /alunos/questoes (last 30 days)
@@ -199,10 +263,12 @@ export async function POST() {
       { alunos: tutoryAlunos, paginacaoDebug, primeiroAlunoKeys },
       { map: diasAtrasoMap, debug: diasAtrasoDebug },
       { map: questoesMap, debug: questoesDebug },
+      { map: planosMap, debug: planosDebug },
     ] = await Promise.all([
       fetchTutoryAlunos(apiHeaders),
       fetchDiasAtraso(cookieHeader),
       cookieHeader ? fetchQuestoes(cookieHeader) : Promise.resolve({ map: new Map<string, QuestaoInfo>(), debug: "Sem cookie" }),
+      cookieHeader ? fetchPlanosRelatorio(cookieHeader) : Promise.resolve({ map: new Map<string, string>(), debug: "Sem cookie" }),
     ]);
 
     if (tutoryAlunos.length === 0) {
@@ -277,7 +343,16 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, paginacaoDebug });
+    // 4. Update concurso for ALL CRM students from report CSV
+    let planosAtualizados = 0;
+    if (planosMap.size > 0) {
+      for (const [email, concurso] of planosMap) {
+        const r = await prisma.aluno.updateMany({ where: { email }, data: { concurso } });
+        planosAtualizados += r.count;
+      }
+    }
+
+    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, planosDebug: `${planosDebug} | ${planosAtualizados} atualizado(s)`, paginacaoDebug });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro na sincronização" },
