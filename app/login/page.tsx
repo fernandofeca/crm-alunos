@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,48 +29,89 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div style={{ display: "flex", minHeight: "100vh" }}>
       {/* Lado esquerdo — foto */}
-      <div className="hidden lg:block lg:w-1/2 relative overflow-hidden">
-        <Image
+      <div
+        className="hidden lg:block lg:w-1/2"
+        style={{ position: "relative", overflow: "hidden" }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
           src="/Carol.png"
           alt="Carolina Gaubert"
-          fill
-          className="object-cover object-top"
-          priority
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "top center",
+          }}
         />
       </div>
 
       {/* Lado direito — formulário */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-[#111111] p-8">
-        <div className="w-full max-w-sm">
-          {/* Logo CG */}
-          <div className="flex justify-center mb-6">
-            <div className="w-28 h-28 rounded-full overflow-hidden">
-              <Image
-                src="/Logo.png"
-                alt="Carolina Gaubert - Concursos Públicos"
-                width={224}
-                height={126}
-                className="object-cover object-center scale-[1.6]"
-                priority
-              />
-            </div>
+      <div
+        className="w-full lg:w-1/2 flex items-center justify-center p-8"
+        style={{ backgroundColor: "#111111" }}
+      >
+        <div style={{ width: "100%", maxWidth: "360px" }}>
+          {/* Logo CG — recorte circular */}
+          <div
+            style={{
+              width: "120px",
+              height: "120px",
+              borderRadius: "50%",
+              overflow: "hidden",
+              margin: "0 auto 24px",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/Logo.png"
+              alt="CG Concursos Públicos"
+              style={{
+                width: "180%",
+                height: "180%",
+                marginLeft: "-40%",
+                marginTop: "-40%",
+                objectFit: "cover",
+              }}
+            />
           </div>
 
           {/* Título */}
-          <h1 className="text-xl font-bold text-white text-center mb-8 tracking-wide">
+          <h1
+            style={{
+              color: "#ffffff",
+              fontSize: "1.25rem",
+              fontWeight: 700,
+              textAlign: "center",
+              marginBottom: "2rem",
+              letterSpacing: "0.05em",
+            }}
+          >
             Acompanhamento Alunos
           </h1>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <input
               type="email"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full bg-[#1e1e1e] border border-[#333] text-white placeholder-gray-500 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#8B0000] focus:ring-1 focus:ring-[#8B0000]"
+              style={{
+                width: "100%",
+                backgroundColor: "#1e1e1e",
+                border: "1px solid #333",
+                color: "#fff",
+                borderRadius: "8px",
+                padding: "12px 16px",
+                fontSize: "0.875rem",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
             />
             <input
               type="password"
@@ -79,13 +119,41 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full bg-[#1e1e1e] border border-[#333] text-white placeholder-gray-500 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#8B0000] focus:ring-1 focus:ring-[#8B0000]"
+              style={{
+                width: "100%",
+                backgroundColor: "#1e1e1e",
+                border: "1px solid #333",
+                color: "#fff",
+                borderRadius: "8px",
+                padding: "12px 16px",
+                fontSize: "0.875rem",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
             />
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && (
+              <p style={{ color: "#f87171", fontSize: "0.875rem", margin: 0 }}>
+                {error}
+              </p>
+            )}
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#8B0000] hover:bg-[#a00000] text-white font-semibold py-3 rounded-lg text-sm transition disabled:opacity-50"
+              style={{
+                width: "100%",
+                backgroundColor: "#8B0000",
+                color: "#fff",
+                fontWeight: 600,
+                padding: "12px",
+                borderRadius: "8px",
+                fontSize: "0.875rem",
+                border: "none",
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.6 : 1,
+                transition: "background-color 0.2s",
+              }}
+              onMouseEnter={(e) => { if (!loading) (e.target as HTMLButtonElement).style.backgroundColor = "#a00000"; }}
+              onMouseLeave={(e) => { if (!loading) (e.target as HTMLButtonElement).style.backgroundColor = "#8B0000"; }}
             >
               {loading ? "Entrando..." : "Entrar"}
             </button>
