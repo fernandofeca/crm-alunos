@@ -111,100 +111,6 @@ async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, numbe
   }
 }
 
-// Returns map of email (lowercase) -> plano_nome from /alunos HTML page (all active students)
-async function fetchPlanosAlunos(cookie: string): Promise<{ map: Map<string, string>; debug: string }> {
-  const map = new Map<string, string>();
-  try {
-    function parsePage(html: string) {
-      // Strategy 1: data-search="NAME EMAIL" blocks (same pattern as /alunos/atraso)
-      // Try to find plan name near each student block
-      const blocks = html.split(/class="student-list-item"/i);
-      for (const block of blocks.slice(1)) {
-        const searchMatch = block.match(/data-search="([^"]+)"/);
-        if (!searchMatch) continue;
-        const parts = searchMatch[1].trim().split(" ");
-        const email = parts[parts.length - 1].toLowerCase();
-        // Look for plan name in data attributes or nearby text
-        const planoMatch =
-          block.match(/data-plano="([^"]+)"/) ??
-          block.match(/data-plan="([^"]+)"/) ??
-          block.match(/class="[^"]*plano[^"]*"[^>]*>\s*([^<]+?)\s*</) ??
-          block.match(/class="[^"]*plan[^"]*"[^>]*>\s*([^<]+?)\s*</);
-        if (email.includes("@") && planoMatch) {
-          map.set(email, planoMatch[1].trim());
-        }
-      }
-
-      // Strategy 2: table rows with mailto + text columns (similar to /alunos/questoes)
-      if (map.size === 0) {
-        const rows = html.split(/<tr[^>]*>/i).slice(2);
-        for (const row of rows) {
-          const emailMatch = row.match(/href=['"]mailto:([^'"]+)['"]/i);
-          if (!emailMatch) continue;
-          const email = emailMatch[1].toLowerCase().trim();
-          // Find non-numeric, non-empty <td> cells (likely text = plan name)
-          const textCells = [...row.matchAll(/<td[^>]*>\s*([A-Za-zÀ-ÿ][^<]{3,60}?)\s*<\/td>/gi)];
-          if (email.includes("@") && textCells.length > 0) {
-            // Take the last meaningful text cell as plan name (usually last column)
-            const plano = textCells[textCells.length - 1][1].trim();
-            if (plano && !plano.includes("@")) map.set(email, plano);
-          }
-        }
-      }
-    }
-
-    // Try /alunos first, fall back to /consulta (some accounts redirect there)
-    async function fetchPage(p: number): Promise<string> {
-      const r = await fetch(`https://admin.tutory.com.br/alunos?p=${p}`, { headers: { Cookie: cookie } });
-      const html = await r.text();
-      if (html.length < 500 && html.includes('"consulta"')) {
-        const r2 = await fetch(`https://admin.tutory.com.br/consulta?p=${p}`, { headers: { Cookie: cookie } });
-        return r2.text();
-      }
-      return html;
-    }
-
-    const firstHtml = await fetchPage(1);
-
-    if (firstHtml.length < 500) {
-      return { map, debug: `Página pequena (${firstHtml.length}b): "${firstHtml.slice(0, 150).replace(/\s+/g, " ")}"` };
-    }
-    if (firstHtml.includes('document.location.href = "/login"') || firstHtml.includes('href="/login"')) {
-      return { map, debug: "Cookie inválido — redirecionou para login" };
-    }
-
-    parsePage(firstHtml);
-
-    const totalPagesMatch = firstHtml.match(/href="\?p=(\d+)">Última/) ??
-                            firstHtml.match(/\?p=(\d+)[^"]*">Última/);
-    const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1], 10) : 1;
-
-    for (let start = 2; start <= totalPages; start += 5) {
-      const batch = [];
-      for (let p = start; p < start + 5 && p <= totalPages; p++) {
-        batch.push(fetchPage(p).then(parsePage));
-      }
-      await Promise.all(batch);
-    }
-
-    // Debug: show HTML structure when 0 results to help diagnose
-    let estruturaDebug = "";
-    if (map.size === 0) {
-      const idx = firstHtml.indexOf("student-list-item");
-      if (idx >= 0) {
-        // Show 600 chars around first student block
-        estruturaDebug = ` | bloco: ${firstHtml.slice(Math.max(0, idx - 30), idx + 600).replace(/\s+/g, " ")}`;
-      } else {
-        // No student-list-item — show body structure hint
-        estruturaDebug = ` | no student-list-item | body: ${firstHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300)}`;
-      }
-    }
-
-    return { map, debug: `${map.size} plano(s) em ${totalPages} pág${estruturaDebug}` };
-  } catch (e) {
-    return { map, debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
-  }
-}
 
 type QuestaoInfo = { taxaAcertos: number; totalQuestoes: number };
 
@@ -293,12 +199,10 @@ export async function POST() {
       { alunos: tutoryAlunos, paginacaoDebug, primeiroAlunoKeys },
       { map: diasAtrasoMap, debug: diasAtrasoDebug },
       { map: questoesMap, debug: questoesDebug },
-      { map: planosMap, debug: planosDebug },
     ] = await Promise.all([
       fetchTutoryAlunos(apiHeaders),
       fetchDiasAtraso(cookieHeader),
       cookieHeader ? fetchQuestoes(cookieHeader) : Promise.resolve({ map: new Map<string, QuestaoInfo>(), debug: "Sem cookie" }),
-      cookieHeader ? fetchPlanosAlunos(cookieHeader) : Promise.resolve({ map: new Map<string, string>(), debug: "Sem cookie" }),
     ]);
 
     if (tutoryAlunos.length === 0) {
@@ -306,8 +210,6 @@ export async function POST() {
     }
 
     const resultados = { criados: 0, atualizados: 0, erros: [] as string[] };
-
-    const camposDisponiveis = primeiroAlunoKeys || "—";
 
     // 1. Sync basic student data from listar-alunos
     for (const t of tutoryAlunos) {
@@ -375,18 +277,7 @@ export async function POST() {
       }
     }
 
-    // 4. Update concurso (plano de estudos) for ALL CRM students from /alunos HTML page
-    let planosAtualizados = 0;
-    if (planosMap.size > 0) {
-      for (const [email, concurso] of planosMap) {
-        const r = await prisma.aluno.updateMany({ where: { email }, data: { concurso } });
-        planosAtualizados += r.count;
-      }
-    }
-
-    const comData = tutoryAlunos.filter(t => t.dt_ini || t.dt_cadastro).length;
-    const primeiroEx = tutoryAlunos[0] ? `dt_ini="${tutoryAlunos[0].dt_ini}"` : "";
-    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, planosDebug: `${planosDebug} | ${planosAtualizados} atualizado(s)`, dataDebug: `${comData}/${tutoryAlunos.length} com dt_inicio. ${primeiroEx}`, paginacaoDebug });
+    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, paginacaoDebug });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro na sincronização" },
