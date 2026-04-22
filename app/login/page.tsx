@@ -57,25 +57,17 @@ export default function LoginPage() {
         style={{ backgroundColor: "#111111", flex: 1 }}
       >
         <div style={{ width: "100%", maxWidth: "360px" }}>
-          {/* Logo CG — recorte circular centralizado */}
-          <div
-            style={{
-              width: "110px",
-              height: "110px",
-              borderRadius: "50%",
-              overflow: "hidden",
-              margin: "0 auto 28px",
-            }}
-          >
+          {/* Logo CG */}
+          <div style={{ textAlign: "center", marginBottom: "28px" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/Logo.png"
               alt="CG Concursos Públicos"
               style={{
+                maxWidth: "280px",
                 width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                objectPosition: "center",
+                height: "auto",
+                display: "inline-block",
               }}
             />
           </div>
