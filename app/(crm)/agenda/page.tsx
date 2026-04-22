@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 type Aluno = { id: string; nome: string };
 type Evento = {
@@ -29,6 +29,21 @@ const TIPO_LIGHT: Record<string, string> = {
   contato:  "bg-green-100 text-green-700",
   outro:    "bg-slate-100 text-slate-600",
 };
+
+function googleCalendarUrl(ev: Evento): string {
+  const inicio = new Date(ev.data);
+  const fim = new Date(inicio.getTime() + 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: ev.titulo,
+    dates: `${fmt(inicio)}/${fmt(fim)}`,
+    details: [ev.descricao, ev.aluno ? `Aluno: ${ev.aluno.nome}` : ""].filter(Boolean).join("\n"),
+    sf: "true",
+    output: "xml",
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
+}
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -59,10 +74,26 @@ export default function AgendaPage() {
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [loading, setLoading] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [mostrarSync, setMostrarSync] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const icalUrl = useRef("");
   const [form, setForm] = useState({ titulo: "", descricao: "", hora: "09:00", tipo: "lembrete", alunoId: "" });
 
   const mesStr = `${ano}-${String(mes + 1).padStart(2, "0")}`;
+
+  useEffect(() => {
+    fetch("/api/agenda/ical-token").then((r) => r.json()).then((d) => {
+      if (d.url) icalUrl.current = d.url;
+    });
+  }, []);
+
+  async function copiarUrl() {
+    if (!icalUrl.current) return;
+    await navigator.clipboard.writeText(icalUrl.current);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
+  }
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -180,11 +211,68 @@ export default function AgendaPage() {
             {MESES[mes]} {ano}
           </h2>
         </div>
-        <button onClick={() => { setMostrarForm(true); }}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
-          + Novo evento
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setMostrarSync((v) => !v)}
+            className="flex items-center gap-1.5 border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm font-medium px-3 py-2 rounded-lg transition">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+            </svg>
+            Google Agenda
+          </button>
+          <button onClick={() => { setMostrarForm(true); }}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
+            + Novo evento
+          </button>
+        </div>
       </div>
+
+      {/* Painel Google Calendar */}
+      {mostrarSync && (
+        <div className="bg-white rounded-xl border border-blue-200 p-5 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-semibold text-slate-800 flex items-center gap-2">
+                <svg className="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+                </svg>
+                Sincronizar com Google Agenda
+              </p>
+              <p className="text-sm text-slate-500 mt-1">
+                Assine o feed iCal para que todos os eventos apareçam automaticamente no Google Agenda.
+              </p>
+            </div>
+            <button onClick={() => setMostrarSync(false)} className="text-slate-400 hover:text-slate-600 flex-shrink-0">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* URL + copiar */}
+          <div className="flex gap-2">
+            <input readOnly value={icalUrl.current || "Carregando URL..."}
+              className="flex-1 text-xs border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 text-slate-600 font-mono select-all" />
+            <button onClick={copiarUrl}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition flex-shrink-0 ${
+                copiado ? "bg-green-500 text-white" : "border border-slate-300 text-slate-600 hover:bg-slate-50"
+              }`}>
+              {copiado ? "Copiado!" : "Copiar"}
+            </button>
+          </div>
+
+          {/* Instruções */}
+          <div className="bg-slate-50 rounded-lg p-4 space-y-2">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Como adicionar ao Google Agenda</p>
+            <ol className="text-xs text-slate-500 space-y-1.5 list-decimal list-inside">
+              <li>Abra o <strong className="text-slate-700">Google Agenda</strong> no computador</li>
+              <li>No menu lateral esquerdo, clique em <strong className="text-slate-700">&quot;Outros agendas&quot;</strong> → <strong className="text-slate-700">&quot;+&quot;</strong></li>
+              <li>Selecione <strong className="text-slate-700">&quot;De URL&quot;</strong></li>
+              <li>Cole a URL copiada acima e clique em <strong className="text-slate-700">&quot;Adicionar agenda&quot;</strong></li>
+              <li>Os eventos serão sincronizados automaticamente</li>
+            </ol>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-5 items-start">
         {/* Grade do calendário */}
@@ -287,7 +375,16 @@ export default function AgendaPage() {
                       {ev.aluno.nome}
                     </a>
                   )}
-                  <p className="text-xs text-slate-400 mt-0.5">{ev.user.name}</p>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <p className="text-xs text-slate-400">{ev.user.name}</p>
+                    <a href={googleCalendarUrl(ev)} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-blue-500 hover:underline flex items-center gap-0.5" title="Adicionar ao Google Agenda">
+                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+                      </svg>
+                      Google
+                    </a>
+                  </div>
                 </div>
               ))}
             </div>
