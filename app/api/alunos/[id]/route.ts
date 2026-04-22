@@ -52,6 +52,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
 
   const campos: Record<string, unknown> = {};
+  if (body.nome !== undefined) campos.nome = body.nome;
+  if (body.email !== undefined) campos.email = body.email;
+  if (body.cpf !== undefined) campos.cpf = body.cpf;
+  if (body.whatsapp !== undefined) campos.whatsapp = body.whatsapp;
+  if (body.concurso !== undefined) campos.concurso = body.concurso;
+  if (body.ativo !== undefined) campos.ativo = body.ativo;
   if (body.mediaGeral !== undefined) campos.mediaGeral = body.mediaGeral;
   if (body.discMaisBaixaNome !== undefined) campos.discMaisBaixaNome = body.discMaisBaixaNome;
   if (body.discMaisBaixaNota !== undefined) campos.discMaisBaixaNota = body.discMaisBaixaNota;
