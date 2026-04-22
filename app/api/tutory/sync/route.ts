@@ -50,7 +50,7 @@ async function fetchTutoryAlunos(headers: Record<string, string>): Promise<Fetch
     const res = await fetch("https://admin.tutory.com.br/intent/listar-alunos", {
       method: "POST",
       headers: { ...headers, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded" },
-      body: `pagina=${pagina}`,
+      body: `pagina=${pagina}&status=todos&ativo=0&todos=1`,
     });
     if (!res.ok) { paginacaoDebug += ` [p${pagina} HTTP ${res.status}]`; break; }
 
@@ -62,14 +62,14 @@ async function fetchTutoryAlunos(headers: Record<string, string>): Promise<Fetch
 
     if (pagina === 1 && alunos.length > 0) {
       primeiroAlunoKeys = Object.keys(alunos[0]).join(", ");
-      // Capture raw pagination object for debug
-      paginacaoDebug = `pagination=${JSON.stringify(data.data?.pagination)}`;
+      paginacaoDebug = `p1=${alunos.length} alunos | pagination=${JSON.stringify(data.data?.pagination)}`;
+    } else {
+      paginacaoDebug += ` | p${pagina}=${alunos.length}`;
     }
 
     all.push(...alunos);
 
     const paginationObj = data.data?.pagination ?? {};
-    // Try multiple known key formats
     const totalPaginas: number =
       paginationObj["total de paginas"] ??
       paginationObj["total_de_paginas"] ??
