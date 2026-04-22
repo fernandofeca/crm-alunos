@@ -37,9 +37,17 @@ export async function GET(req: NextRequest) {
     ];
   }
 
-  if (filtro === "nota_baixa") where.taxaAcertos = { lt: 60 };
-  else if (filtro === "metas_em_dia") where.diasAtraso = 0;
-  else {
+  if (filtro === "nota_baixa") {
+    where.taxaAcertos = { lt: 60 };
+  } else if (filtro === "metas_em_dia") {
+    where.diasAtraso = 0;
+  } else if (filtro === "novos") {
+    const trinta = new Date();
+    trinta.setDate(trinta.getDate() - 30);
+    where.createdAt = { gte: trinta };
+  } else if (filtro === "sem_contato") {
+    where.contatos = { none: {} };
+  } else {
     const metasMatch = filtro.match(/^metas_(\d+)d$/);
     if (metasMatch) where.diasAtraso = parseInt(metasMatch[1], 10);
   }

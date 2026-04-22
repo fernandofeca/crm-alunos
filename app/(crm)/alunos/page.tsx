@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+import { Suspense } from "react";
 import AlunosClient from "./AlunosClient";
 import TutorySyncButton from "./TutorySyncButton";
 
@@ -41,7 +42,9 @@ export default async function AlunosPage() {
           </Link>
         </div>
       </div>
-      <AlunosClient initialAlunos={[]} concursos={concursos} totalInicial={total} />
+      <Suspense fallback={<p className="text-sm text-slate-400">Carregando...</p>}>
+        <AlunosClient initialAlunos={[]} concursos={concursos} totalInicial={total} />
+      </Suspense>
     </div>
   );
 }

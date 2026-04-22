@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 type Contato = {
@@ -77,9 +78,12 @@ export default function AlunosClient({
   concursos: string[];
   totalInicial: number;
 }) {
+  const searchParams = useSearchParams();
+  const filtroInicial = searchParams.get("filtro") ?? "";
+
   const [alunos, setAlunos] = useState<Aluno[]>(initialAlunos);
   const [q, setQ] = useState("");
-  const [filtro, setFiltro] = useState("");
+  const [filtro, setFiltro] = useState(filtroInicial);
   const [concursoFiltro, setConcursoFiltro] = useState("");
   const [planoFiltro, setPlanoFiltro] = useState("");
   const [apenasAtivos, setApenasAtivos] = useState(true);
@@ -89,7 +93,7 @@ export default function AlunosClient({
   const pageSize = 50;
 
   useEffect(() => {
-    buscar("", "", "", "", true, 0);
+    buscar("", filtroInicial, "", "", true, 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -172,6 +176,16 @@ export default function AlunosClient({
               <option key={p} value={p}>{p}</option>
             ))}
           </select>
+          <button
+            onClick={() => handleFiltro("novos")}
+            className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
+              filtro === "novos"
+                ? "bg-indigo-500 text-white border-indigo-500"
+                : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            Novos (30d)
+          </button>
           <button
             onClick={() => handleFiltro("nota_baixa")}
             className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
