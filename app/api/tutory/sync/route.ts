@@ -137,11 +137,16 @@ async function fetchPlanosRelatorio(cookie: string): Promise<{ map: Map<string, 
         ? downloadMatch[1]
         : `https://admin.tutory.com.br${downloadMatch[1]}`;
       const dlRes = await fetch(dlUrl, { headers: { Cookie: cookie } });
+      const contentType = dlRes.headers.get("content-type") ?? "?";
       const csv = await dlRes.text();
       if (csv.length > 200) {
+        const sep = csv.split("\n")[0].includes(";") ? ";" : ",";
+        const headers = csv.split("\n")[0].replace(/^﻿/, "").split(sep).map(h => h.trim().replace(/['"]/g, ""));
         parseCSV(csv, map);
-        return { map, debug: `${map.size} plano(s) via ${dlUrl.replace("https://admin.tutory.com.br", "")}` };
+        const path = dlUrl.replace("https://admin.tutory.com.br", "");
+        return { map, debug: `${map.size} plano(s) via ${path} | tipo: ${contentType.slice(0, 30)} | colunas: ${headers.join(", ")}` };
       }
+      return { map, debug: `${dlUrl.replace("https://admin.tutory.com.br", "")} vazio (${csv.length}b) | tipo: ${contentType}` };
     }
 
     // Show page structure for diagnosis
