@@ -77,23 +77,25 @@ export default function AlunosClient({
   const [filtro, setFiltro] = useState("");
   const [concursoFiltro, setConcursoFiltro] = useState("");
   const [planoFiltro, setPlanoFiltro] = useState("");
+  const [apenasAtivos, setApenasAtivos] = useState(true);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(totalInicial);
   const pageSize = 50;
 
   useEffect(() => {
-    buscar("", "", "", "", 0);
+    buscar("", "", "", "", true, 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function buscar(query: string, f: string, concurso: string, plano: string, p: number) {
+  async function buscar(query: string, f: string, concurso: string, plano: string, ativos: boolean, p: number) {
     setLoading(true);
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (f) params.set("filtro", f);
     if (concurso) params.set("concurso", concurso);
     if (plano) params.set("planoTipo", plano);
+    if (ativos) params.set("ativo", "true");
     params.set("page", String(p));
     const res = await fetch(`/api/alunos?${params}`);
     const data = await res.json();
@@ -105,23 +107,28 @@ export default function AlunosClient({
 
   function handleQ(v: string) {
     setQ(v);
-    buscar(v, filtro, concursoFiltro, planoFiltro, 0);
+    buscar(v, filtro, concursoFiltro, planoFiltro, apenasAtivos, 0);
   }
 
   function handleFiltro(v: string) {
     const next = filtro === v ? "" : v;
     setFiltro(next);
-    buscar(q, next, concursoFiltro, planoFiltro, 0);
+    buscar(q, next, concursoFiltro, planoFiltro, apenasAtivos, 0);
   }
 
   function handleConcurso(v: string) {
     setConcursoFiltro(v);
-    buscar(q, filtro, v, planoFiltro, 0);
+    buscar(q, filtro, v, planoFiltro, apenasAtivos, 0);
   }
 
   function handlePlano(v: string) {
     setPlanoFiltro(v);
-    buscar(q, filtro, concursoFiltro, v, 0);
+    buscar(q, filtro, concursoFiltro, v, apenasAtivos, 0);
+  }
+
+  function handleApenasAtivos(v: boolean) {
+    setApenasAtivos(v);
+    buscar(q, filtro, concursoFiltro, planoFiltro, v, 0);
   }
 
   const totalPages = Math.ceil(total / pageSize);
@@ -170,6 +177,16 @@ export default function AlunosClient({
           >
             Nota baixa
           </button>
+          <button
+            onClick={() => handleApenasAtivos(!apenasAtivos)}
+            className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
+              apenasAtivos
+                ? "bg-blue-600 text-white border-blue-600"
+                : "bg-white border-slate-300 text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            {apenasAtivos ? "Apenas ativos" : "Todos"}
+          </button>
         </div>
 
         {/* Linha 2: filtros de status de estudo */}
@@ -196,7 +213,7 @@ export default function AlunosClient({
           <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
             <tr>
               <th className="text-left px-4 py-3">Aluno</th>
-              <th className="text-left px-4 py-3">Concurso / Plano</th>
+              <th className="text-left px-4 py-3">Concurso</th>
               <th className="text-left px-4 py-3">WhatsApp</th>
               <th className="text-left px-4 py-3">Média</th>
               <th className="text-left px-4 py-3">Disciplina baixa</th>
@@ -219,18 +236,14 @@ export default function AlunosClient({
                     <div className="text-xs text-slate-400">{a.email}</div>
                     {a.cpf && <div className="text-xs text-slate-400">CPF: {a.cpf}</div>}
                   </td>
-                  <td className="px-4 py-3 space-y-1">
+                  <td className="px-4 py-3">
                     {a.concurso ? (
-                      <span className="block text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-0.5 rounded-full w-fit">
+                      <span className="text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-0.5 rounded-full">
                         {a.concurso}
                       </span>
-                    ) : null}
-                    {a.planoTipo ? (
-                      <span className="block text-xs bg-purple-50 text-purple-700 font-medium px-2 py-0.5 rounded-full w-fit">
-                        {a.planoTipo}
-                      </span>
-                    ) : null}
-                    {!a.concurso && !a.planoTipo && <span className="text-slate-300">—</span>}
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {a.whatsapp ? (
@@ -317,14 +330,14 @@ export default function AlunosClient({
         {totalPages > 1 && (
           <div className="flex gap-2">
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, page - 1)}
+              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page - 1)}
               disabled={page === 0 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               ← Anterior
             </button>
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, page + 1)}
+              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page + 1)}
               disabled={page >= totalPages - 1 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >

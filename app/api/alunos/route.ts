@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   const filtro = searchParams.get("filtro") ?? "";
   const concurso = searchParams.get("concurso") ?? "";
   const planoTipo = searchParams.get("planoTipo") ?? "";
+  const ativo = searchParams.get("ativo");
   const page = Math.max(0, parseInt(searchParams.get("page") ?? "0", 10));
 
   const where: Record<string, unknown> = {};
@@ -36,6 +37,8 @@ export async function GET(req: NextRequest) {
 
   if (concurso) where.concurso = concurso;
   if (planoTipo) where.planoTipo = planoTipo;
+  if (ativo === "true") where.ativo = true;
+  else if (ativo === "false") where.ativo = false;
 
   const [alunos, total] = await Promise.all([
     prisma.aluno.findMany({
