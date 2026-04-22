@@ -37,9 +37,13 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return { Cookie: cookie };
 }
 
-async function fetchTutoryAlunos(headers: Record<string, string>): Promise<TutoryAluno[]> {
+type FetchAlunosResult = { alunos: TutoryAluno[]; paginacaoDebug: string; primeiroAlunoKeys: string };
+
+async function fetchTutoryAlunos(headers: Record<string, string>): Promise<FetchAlunosResult> {
   const all: TutoryAluno[] = [];
   let pagina = 1;
+  let paginacaoDebug = "";
+  let primeiroAlunoKeys = "";
 
   while (true) {
     const res = await fetch("https://admin.tutory.com.br/intent/listar-alunos", {
@@ -47,22 +51,37 @@ async function fetchTutoryAlunos(headers: Record<string, string>): Promise<Tutor
       headers: { ...headers, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded" },
       body: `pagina=${pagina}`,
     });
-    if (!res.ok) break;
+    if (!res.ok) { paginacaoDebug += ` [p${pagina} HTTP ${res.status}]`; break; }
 
     const data = await res.json();
-    if (!data.result) break;
+    if (!data.result) { paginacaoDebug += ` [p${pagina} result=false]`; break; }
 
     const alunos: TutoryAluno[] = data.data?.alunos ?? [];
-    if (alunos.length === 0) break;
+    if (alunos.length === 0) { paginacaoDebug += ` [p${pagina} vazio]`; break; }
+
+    if (pagina === 1 && alunos.length > 0) {
+      primeiroAlunoKeys = Object.keys(alunos[0]).join(", ");
+      // Capture raw pagination object for debug
+      paginacaoDebug = `pagination=${JSON.stringify(data.data?.pagination)}`;
+    }
 
     all.push(...alunos);
 
-    const totalPaginas: number = data.data?.pagination?.["total de paginas"] ?? 1;
+    const paginationObj = data.data?.pagination ?? {};
+    // Try multiple known key formats
+    const totalPaginas: number =
+      paginationObj["total de paginas"] ??
+      paginationObj["total_de_paginas"] ??
+      paginationObj["totalPaginas"] ??
+      paginationObj["total_pages"] ??
+      paginationObj["pages"] ??
+      1;
+
     if (pagina >= totalPaginas) break;
     pagina++;
   }
 
-  return all;
+  return { alunos: all, paginacaoDebug, primeiroAlunoKeys };
 }
 
 function isAtivo(aluno: TutoryAluno): boolean {
@@ -219,7 +238,7 @@ export async function POST() {
 
     const cookieHeader = sessionCookie ?? "";
 
-    const [tutoryAlunos, { map: diasAtrasoMap, debug: diasAtrasoDebug }, { map: questoesMap, debug: questoesDebug }] = await Promise.all([
+    const [{ alunos: tutoryAlunos, paginacaoDebug, primeiroAlunoKeys }, { map: diasAtrasoMap, debug: diasAtrasoDebug }, { map: questoesMap, debug: questoesDebug }] = await Promise.all([
       fetchTutoryAlunos(headers),
       fetchDiasAtraso(headers),
       cookieHeader ? fetchQuestoes(cookieHeader) : Promise.resolve({ map: new Map<string, QuestaoInfo>(), debug: "Sem cookie" }),
@@ -231,9 +250,7 @@ export async function POST() {
 
     const resultados = { criados: 0, atualizados: 0, erros: [] as string[] };
 
-    // Debug: show available fields from first student to confirm date field name
-    const primeiroAluno = tutoryAlunos[0];
-    const camposDisponiveis = primeiroAluno ? Object.keys(primeiroAluno).join(", ") : "—";
+    const camposDisponiveis = primeiroAlunoKeys || "—";
 
     // 1. Sync basic student data from listar-alunos
     for (const t of tutoryAlunos) {
@@ -302,7 +319,8 @@ export async function POST() {
     }
 
     const comData = tutoryAlunos.filter(t => t.dt_cadastro || t.created_at || t.data_cadastro).length;
-    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, camposDebug: `campos: ${camposDisponiveis}`, dataDebug: `${comData}/${tutoryAlunos.length} com data cadastro` });
+    const primeiroEx = tutoryAlunos[0] ? `ex dt_cadastro="${tutoryAlunos[0].dt_cadastro}" created_at="${tutoryAlunos[0].created_at}"` : "";
+    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, camposDebug: `campos: ${camposDisponiveis}`, dataDebug: `${comData}/${tutoryAlunos.length} com data cadastro. ${primeiroEx}`, paginacaoDebug });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro na sincronização" },

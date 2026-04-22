@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Resultado = { criados: number; atualizados: number; total: number; erros: string[]; error?: string; diasAtrasoDebug?: string; questoesDebug?: string; camposDebug?: string; dataDebug?: string };
+type Resultado = { criados: number; atualizados: number; total: number; erros: string[]; error?: string; diasAtrasoDebug?: string; questoesDebug?: string; camposDebug?: string; dataDebug?: string; paginacaoDebug?: string };
 
 export default function TutorySyncButton({ onSync }: { onSync?: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -76,6 +76,11 @@ export default function TutorySyncButton({ onSync }: { onSync?: () => void }) {
                     <div className="flex justify-between gap-2">
                       <span className="text-slate-500 shrink-0">Dt. Cadastro</span>
                       <span className="font-semibold text-xs text-slate-600 text-right">{resultado.dataDebug}</span>
+                    </div>
+                  )}
+                  {resultado.paginacaoDebug && (
+                    <div className="mt-1 p-2 bg-slate-50 rounded text-xs text-slate-400 break-all">
+                      Paginação: {resultado.paginacaoDebug}
                     </div>
                   )}
                   {resultado.camposDebug && (
