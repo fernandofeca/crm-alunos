@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AlunosPage() {
   const [total, concursosRaw] = await Promise.all([
-    prisma.aluno.count(),
+    prisma.aluno.count({ where: { ativo: true } }),
     prisma.aluno.findMany({
       select: { concurso: true },
       distinct: ["concurso"],
@@ -22,7 +22,7 @@ export default async function AlunosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Alunos</h1>
-          <p className="text-sm text-slate-500">{total} alunos cadastrados</p>
+          <p className="text-sm text-slate-500">{total} alunos ativos</p>
         </div>
         <div className="flex gap-2">
           <Link

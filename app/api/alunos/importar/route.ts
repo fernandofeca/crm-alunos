@@ -8,6 +8,7 @@ type Linha = Record<string, unknown>;
 function primeiroValor(row: Linha, col: string): string {
   const val = row[col];
   if (val === undefined || val === null) return "";
+  if (val instanceof Date) return val.toISOString();
   return String(val).trim();
 }
 
@@ -22,6 +23,26 @@ function encontrarChave(headers: string[], candidatos: string[]): string {
 
 function limparNumero(val: string): string {
   return val.replace(/\D/g, "");
+}
+
+function parseData(val: unknown): Date | null {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  if (typeof val === "number") {
+    // Excel serial date
+    const info = XLSX.SSF.parse_date_code(val);
+    if (info) return new Date(info.y, info.m - 1, info.d);
+  }
+  if (typeof val === "string") {
+    const s = val.trim();
+    const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (br) return new Date(parseInt(br[3]), parseInt(br[2]) - 1, parseInt(br[1]));
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -41,7 +62,7 @@ export async function POST(req: NextRequest) {
   let rows: Linha[] = [];
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     rows = XLSX.utils.sheet_to_json<Linha>(sheet, { defval: "" });
@@ -58,53 +79,49 @@ export async function POST(req: NextRequest) {
 
   const headers = Object.keys(rows[0]);
 
-  const colNome = encontrarChave(headers, [
-    "nome", "name", "aluno", "estudante",
-  ]);
-  const colEmail = encontrarChave(headers, [
-    "email", "e-mail", "e mail", "endereco", "endereço",
-  ]);
-  const colCpf = encontrarChave(headers, [
-    "cpf", "documento", "doc",
-  ]);
-  const colCelular = encontrarChave(headers, [
-    "celular", "telefone", "whatsapp", "fone", "contato", "cel", "tel",
-  ]);
-  const colConcurso = encontrarChave(headers, [
-    "concurso", "curso", "turma", "produto",
+  const colNome      = encontrarChave(headers, ["nome", "name", "aluno", "estudante"]);
+  const colEmail     = encontrarChave(headers, ["email", "e-mail", "e mail", "endereco", "endereço"]);
+  const colCpf       = encontrarChave(headers, ["cpf", "documento", "doc"]);
+  const colCelular   = encontrarChave(headers, ["celular", "telefone", "whatsapp", "fone", "contato", "cel", "tel"]);
+  const colConcurso  = encontrarChave(headers, ["concurso", "curso", "turma", "produto"]);
+  const colStatus    = encontrarChave(headers, ["status", "situacao", "situação", "situação"]);
+  const colVencimento = encontrarChave(headers, [
+    "vencimento do plano", "vencimento", "validade", "expiracao", "expiração",
+    "data vencimento", "data de vencimento", "venc",
   ]);
 
   const resultados = {
     criados: 0,
     atualizados: 0,
     erros: [] as string[],
-    colunas_detectadas: { colNome, colEmail, colCpf, colCelular, colConcurso },
+    colunas_detectadas: { colNome, colEmail, colCpf, colCelular, colConcurso, colStatus, colVencimento },
   };
 
-  // Deduplica emails dentro da mesma importação
   const emailsProcessados = new Set<string>();
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const linhaNr = i + 2;
 
-    const nome = colNome ? primeiroValor(row, colNome) : "";
-    // Normaliza email: lowercase + trim para evitar colisão por capitalização
-    const email = (colEmail ? primeiroValor(row, colEmail) : "").toLowerCase().trim();
-    const cpf = limparNumero(colCpf ? primeiroValor(row, colCpf) : "");
-    const celular = limparNumero(colCelular ? primeiroValor(row, colCelular) : "");
-    const concurso = colConcurso ? primeiroValor(row, colConcurso) : "";
+    const nome     = colNome     ? primeiroValor(row, colNome)    : "";
+    const email    = (colEmail   ? primeiroValor(row, colEmail)   : "").toLowerCase().trim();
+    const cpf      = limparNumero(colCpf     ? primeiroValor(row, colCpf)     : "");
+    const celular  = limparNumero(colCelular  ? primeiroValor(row, colCelular) : "");
+    const concurso = colConcurso  ? primeiroValor(row, colConcurso) : "";
 
-    // Linha verdadeiramente vazia — sem nenhum dado relevante
+    // Status: só marca ativo=true se coluna existir E valor for "ativo"
+    const statusRaw = colStatus ? primeiroValor(row, colStatus).toLowerCase().trim() : null;
+    const ativo = statusRaw !== null ? statusRaw === "ativo" : undefined;
+
+    // Vencimento do plano
+    const vencimentoRaw = colVencimento ? row[colVencimento] : null;
+    const planoVencimento = vencimentoRaw ? parseData(vencimentoRaw) : null;
+
     if (!nome && !email && !cpf && !celular) continue;
 
     try {
       if (email) {
-        // Evita processar o mesmo email duas vezes na mesma planilha
-        if (emailsProcessados.has(email)) {
-          resultados.atualizados++;
-          continue;
-        }
+        if (emailsProcessados.has(email)) { resultados.atualizados++; continue; }
         emailsProcessados.add(email);
 
         const existente = await prisma.aluno.findUnique({ where: { email } });
@@ -112,36 +129,44 @@ export async function POST(req: NextRequest) {
           await prisma.aluno.update({
             where: { id: existente.id },
             data: {
-              nome: nome || existente.nome,
-              cpf: cpf || existente.cpf,
-              whatsapp: celular || existente.whatsapp,
+              nome:     nome     || existente.nome,
+              cpf:      cpf      || existente.cpf,
+              whatsapp: celular  || existente.whatsapp,
               concurso: concurso || existente.concurso,
+              ...(ativo !== undefined ? { ativo } : {}),
+              ...(planoVencimento ? { planoVencimento } : {}),
             },
           });
           resultados.atualizados++;
         } else {
           await prisma.aluno.create({
-            data: { nome: nome || "Sem nome", email, cpf, whatsapp: celular, concurso },
+            data: {
+              nome: nome || "Sem nome",
+              email,
+              cpf,
+              whatsapp: celular,
+              concurso,
+              ...(ativo !== undefined ? { ativo } : {}),
+              ...(planoVencimento ? { planoVencimento } : {}),
+            },
           });
           resultados.criados++;
         }
-      } else {
-        // Sem email: tenta encontrar pelo CPF para não criar duplicatas
-        if (cpf) {
-          const existentePorCpf = await prisma.aluno.findFirst({ where: { cpf } });
-          if (existentePorCpf) {
-            await prisma.aluno.update({
-              where: { id: existentePorCpf.id },
-              data: {
-                nome: nome || existentePorCpf.nome,
-                whatsapp: celular || existentePorCpf.whatsapp,
-                concurso: concurso || existentePorCpf.concurso,
-              },
-            });
-            resultados.atualizados++;
-            continue;
-          }
-          // CPF ainda não cadastrado — cria com email derivado do CPF
+      } else if (cpf) {
+        const existentePorCpf = await prisma.aluno.findFirst({ where: { cpf } });
+        if (existentePorCpf) {
+          await prisma.aluno.update({
+            where: { id: existentePorCpf.id },
+            data: {
+              nome:     nome     || existentePorCpf.nome,
+              whatsapp: celular  || existentePorCpf.whatsapp,
+              concurso: concurso || existentePorCpf.concurso,
+              ...(ativo !== undefined ? { ativo } : {}),
+              ...(planoVencimento ? { planoVencimento } : {}),
+            },
+          });
+          resultados.atualizados++;
+        } else {
           await prisma.aluno.create({
             data: {
               nome: nome || "Sem nome",
@@ -149,22 +174,25 @@ export async function POST(req: NextRequest) {
               cpf,
               whatsapp: celular,
               concurso,
-            },
-          });
-          resultados.criados++;
-        } else {
-          // Sem email e sem CPF — cria com email único baseado em índice
-          await prisma.aluno.create({
-            data: {
-              nome: nome || "Sem nome",
-              email: `sem-email-linha-${linhaNr}-${Date.now()}`,
-              cpf: "",
-              whatsapp: celular,
-              concurso,
+              ...(ativo !== undefined ? { ativo } : {}),
+              ...(planoVencimento ? { planoVencimento } : {}),
             },
           });
           resultados.criados++;
         }
+      } else {
+        await prisma.aluno.create({
+          data: {
+            nome: nome || "Sem nome",
+            email: `sem-email-linha-${linhaNr}-${Date.now()}`,
+            cpf: "",
+            whatsapp: celular,
+            concurso,
+            ...(ativo !== undefined ? { ativo } : {}),
+            ...(planoVencimento ? { planoVencimento } : {}),
+          },
+        });
+        resultados.criados++;
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

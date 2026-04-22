@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const [total, notaBaixa, semContato, todosDias, mais3dias, menos3dias, naoEstudou] = await Promise.all([
-    prisma.aluno.count(),
+    prisma.aluno.count({ where: { ativo: true } }),
     prisma.aluno.count({ where: { ativo: true, mediaGeral: { lt: 6 } } }),
     prisma.aluno.count({ where: { ativo: true, contatos: { none: {} } } }),
     prisma.aluno.count({ where: { ativo: true, statusEstudo: "todos_dias" } }),

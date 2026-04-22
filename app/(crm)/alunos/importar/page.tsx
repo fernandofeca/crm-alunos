@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-type ColunasDetectadas = { colNome: string; colEmail: string; colCpf: string; colCelular: string; colConcurso: string };
+type ColunasDetectadas = { colNome: string; colEmail: string; colCpf: string; colCelular: string; colConcurso: string; colStatus: string; colVencimento: string };
 type Resultado = { criados: number; atualizados: number; erros: string[]; colunas_detectadas?: ColunasDetectadas };
 
 export default function ImportarPage() {
@@ -61,7 +61,7 @@ export default function ImportarPage() {
         </button>
         <h1 className="text-2xl font-bold text-slate-800">Importar Alunos</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Importe uma planilha Excel com as colunas: <span className="font-medium text-slate-700">Concurso, CPF, Nome, Email, Celular</span>
+          Importe uma planilha Excel com as colunas: <span className="font-medium text-slate-700">Nome, Email, CPF, Celular, Concurso, Status, Vencimento do Plano</span>
         </p>
       </div>
 
@@ -108,7 +108,7 @@ export default function ImportarPage() {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-slate-500">
-                {["Concurso", "CPF", "Nome", "Email", "Celular"].map((col) => (
+                {["Nome", "Email", "CPF", "Celular", "Concurso", "Status", "Vencimento do Plano"].map((col) => (
                   <th key={col} className="text-left px-3 py-2 bg-white border border-slate-200 font-semibold">
                     {col}
                   </th>
@@ -117,17 +117,20 @@ export default function ImportarPage() {
             </thead>
             <tbody>
               <tr className="text-slate-400">
-                <td className="px-3 py-2 border border-slate-200 bg-white">PCSP 2025</td>
-                <td className="px-3 py-2 border border-slate-200 bg-white">123.456.789-00</td>
                 <td className="px-3 py-2 border border-slate-200 bg-white">João Silva</td>
                 <td className="px-3 py-2 border border-slate-200 bg-white">joao@email.com</td>
+                <td className="px-3 py-2 border border-slate-200 bg-white">123.456.789-00</td>
                 <td className="px-3 py-2 border border-slate-200 bg-white">11999999999</td>
+                <td className="px-3 py-2 border border-slate-200 bg-white">PCSP 2025</td>
+                <td className="px-3 py-2 border border-slate-200 bg-white">Ativo</td>
+                <td className="px-3 py-2 border border-slate-200 bg-white">31/12/2025</td>
               </tr>
             </tbody>
           </table>
         </div>
         <p className="text-xs text-slate-400 mt-2">
-          Se o email já existir no sistema, o registro será atualizado com os novos dados.
+          Se o email já existir, os dados cadastrais são atualizados, mas o histórico de contatos é preservado.<br />
+          <strong>Status</strong>: escreva &quot;Ativo&quot; para ativar o aluno. &nbsp;<strong>Vencimento do Plano</strong>: formato DD/MM/AAAA ou célula de data.
         </p>
       </div>
 
@@ -161,6 +164,8 @@ export default function ImportarPage() {
                   CPF: resultado.colunas_detectadas.colCpf,
                   Celular: resultado.colunas_detectadas.colCelular,
                   Concurso: resultado.colunas_detectadas.colConcurso,
+                  Status: resultado.colunas_detectadas.colStatus,
+                  "Vencimento do Plano": resultado.colunas_detectadas.colVencimento,
                 }).map(([label, valor]) => (
                   <div key={label} className="flex gap-1">
                     <span className="text-slate-400">{label}:</span>
