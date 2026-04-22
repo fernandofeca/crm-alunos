@@ -37,14 +37,12 @@ export async function GET(req: NextRequest) {
     ];
   }
 
-  const statusEstudoMap: Record<string, string> = {
-    todos_dias: "todos_dias",
-    mais_3_dias: "mais_3_dias",
-    menos_3_dias: "menos_3_dias",
-    nao_estudou: "nao_estudou",
-  };
   if (filtro === "nota_baixa") where.taxaAcertos = { lt: 60 };
-  else if (statusEstudoMap[filtro]) where.statusEstudo = statusEstudoMap[filtro];
+  else if (filtro === "metas_em_dia") where.diasAtraso = 0;
+  else {
+    const metasMatch = filtro.match(/^metas_(\d+)d$/);
+    if (metasMatch) where.diasAtraso = parseInt(metasMatch[1], 10);
+  }
 
   if (concurso) where.concurso = concurso;
   if (planoTipo) where.planoTipo = planoTipo;

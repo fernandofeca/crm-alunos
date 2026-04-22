@@ -27,25 +27,21 @@ type Aluno = {
   planoTipo: string;
   taxaAcertos: number;
   totalQuestoes: number;
-  statusEstudo: string;
   diasAtraso: number;
   disciplinas: Disciplina[];
   contatos: Contato[];
 };
 
-const STATUS_ESTUDO = [
-  { value: "todos_dias", label: "Todos os dias", ativo: "bg-green-500 text-white border-green-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
-  { value: "mais_3_dias", label: "Mais de 3 dias", ativo: "bg-lime-500 text-white border-lime-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
-  { value: "menos_3_dias", label: "Menos de 3 dias", ativo: "bg-orange-500 text-white border-orange-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
-  { value: "nao_estudou", label: "Não estudou", ativo: "bg-red-500 text-white border-red-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+const METAS_FILTROS = [
+  { value: "metas_em_dia", label: "Em dia", ativo: "bg-green-500 text-white border-green-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "metas_1d", label: "1d atraso", ativo: "bg-yellow-400 text-white border-yellow-400", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "metas_2d", label: "2d atraso", ativo: "bg-orange-400 text-white border-orange-400", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "metas_3d", label: "3d atraso", ativo: "bg-orange-500 text-white border-orange-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "metas_4d", label: "4d atraso", ativo: "bg-red-400 text-white border-red-400", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "metas_5d", label: "5d atraso", ativo: "bg-red-500 text-white border-red-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "metas_6d", label: "6d atraso", ativo: "bg-red-600 text-white border-red-600", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
+  { value: "metas_7d", label: "7d atraso", ativo: "bg-red-700 text-white border-red-700", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
 ];
-
-const STATUS_COR: Record<string, string> = {
-  todos_dias: "text-green-600",
-  mais_3_dias: "text-lime-600",
-  menos_3_dias: "text-orange-500",
-  nao_estudou: "text-red-500",
-};
 
 const PLANOS = ["Mentoria da Posse", "Mentoria Diamante", "Cronograma Ouro", "Cronograma Outros"];
 
@@ -198,10 +194,10 @@ export default function AlunosClient({
           </button>
         </div>
 
-        {/* Linha 2: filtros de status de estudo */}
+        {/* Linha 2: filtros de metas */}
         <div className="flex flex-wrap gap-2">
-          <span className="text-xs text-slate-500 self-center">Status estudo:</span>
-          {STATUS_ESTUDO.map((s) => (
+          <span className="text-xs text-slate-500 self-center">Metas:</span>
+          {METAS_FILTROS.map((s) => (
             <button
               key={s.value}
               onClick={() => handleFiltro(s.value)}
@@ -227,7 +223,6 @@ export default function AlunosClient({
               <th className="text-left px-4 py-3">Taxa Acertos</th>
               <th className="text-left px-4 py-3">Disciplina baixa</th>
               <th className="text-left px-4 py-3">Assunto baixo</th>
-              <th className="text-left px-4 py-3">Status Estudo</th>
               <th className="text-left px-4 py-3">Metas</th>
               <th className="text-left px-4 py-3">Último contato</th>
               <th className="px-4 py-3"></th>
@@ -238,7 +233,6 @@ export default function AlunosClient({
               const disc = disciplinaMaisBaixa(a.disciplinas);
               const assunto = assuntoMaisBaixo(a.disciplinas);
               const ultimoContato = a.contatos[0];
-              const statusInfo = STATUS_ESTUDO.find((s) => s.value === a.statusEstudo);
               return (
                 <tr key={a.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
@@ -302,11 +296,6 @@ export default function AlunosClient({
                     ) : <span className="text-slate-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-medium ${STATUS_COR[a.statusEstudo] ?? "text-slate-400"}`}>
-                      {statusInfo?.label ?? "—"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
                     {a.diasAtraso > 0 ? (
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -340,7 +329,7 @@ export default function AlunosClient({
             })}
             {alunos.length === 0 && !loading && (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
                   Nenhum aluno encontrado
                 </td>
               </tr>

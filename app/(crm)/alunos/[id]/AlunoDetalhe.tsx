@@ -17,8 +17,6 @@ type Aluno = {
   taxaAcertos: number;
   totalQuestoes: number;
   ativo: boolean;
-  estudouUltimos7d: boolean;
-  statusEstudo: string;
   planoTipo: string;
   planoVencimento: string | null;
   discMaisBaixaNome: string;
@@ -132,12 +130,6 @@ function CardEditavel({ label, nome, nota, onSave, mostrarNome = true }: CardEdi
   );
 }
 
-const statusEstudoOpcoes = [
-  { value: "todos_dias", label: "Todos os dias", bgAtivo: "bg-green-500", textAtivo: "text-white" },
-  { value: "mais_3_dias", label: "Mais de 3 dias", bgAtivo: "bg-lime-500", textAtivo: "text-white" },
-  { value: "menos_3_dias", label: "Menos de 3 dias", bgAtivo: "bg-orange-400", textAtivo: "text-white" },
-  { value: "nao_estudou", label: "Não estudou", bgAtivo: "bg-red-500", textAtivo: "text-white" },
-];
 
 export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno: Aluno; concursos?: string[] }) {
   const router = useRouter();
@@ -370,8 +362,8 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
           </div>
         </div>
 
-        {/* Plano e Status de Estudo */}
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Plano */}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Tipo do Plano */}
           <div className="bg-slate-50 rounded-lg p-4">
             <p className="text-xs text-slate-500 mb-2">Tipo do Plano</p>
@@ -410,26 +402,6 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
               onChange={(e) => patchAluno({ planoVencimento: e.target.value || null } as Partial<Aluno>)}
               className="text-sm bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-          </div>
-
-          {/* Status de Estudo */}
-          <div className="bg-slate-50 rounded-lg p-4">
-            <p className="text-xs text-slate-500 mb-2">Status de Estudo</p>
-            <div className="grid grid-cols-2 gap-1">
-              {statusEstudoOpcoes.map((op) => (
-                <button
-                  key={op.value}
-                  onClick={() => patchAluno({ statusEstudo: op.value } as Partial<Aluno>)}
-                  className={`px-2 py-1 rounded-lg text-xs font-medium transition text-left leading-tight ${
-                    aluno.statusEstudo === op.value
-                      ? `${op.bgAtivo} ${op.textAtivo}`
-                      : "bg-white border border-slate-200 text-slate-500 hover:bg-slate-100"
-                  }`}
-                >
-                  {op.label}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </div>
