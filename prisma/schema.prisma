@@ -42,6 +42,8 @@ model Aluno {
   taxaAcertos         Float    @default(0)
   totalQuestoes       Int      @default(0)
   tutoryCreatedAt     DateTime?
+  dataInicio          DateTime?
+  acompanharDePerto   Boolean  @default(false)
   disciplinas      Disciplina[]
   contatos         Contato[]
   tarefas          Tarefa[]

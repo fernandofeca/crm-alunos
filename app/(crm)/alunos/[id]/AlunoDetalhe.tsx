@@ -19,6 +19,8 @@ type Aluno = {
   ativo: boolean;
   planoTipo: string;
   planoVencimento: string | null;
+  dataInicio: string | null;
+  acompanharDePerto: boolean;
   discMaisBaixaNome: string;
   discMaisBaixaNota: number;
   assuntoMaisBaixoNome: string;
@@ -137,7 +139,7 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
   const [aluno, setAluno] = useState<Aluno>(initial);
   const [tipoContato, setTipoContato] = useState<"mentor" | "equipe">("equipe");
   const [obsContato, setObsContato] = useState("");
-  const [dataContato, setDataContato] = useState("");
+  const [dataContato, setDataContato] = useState(() => new Date().toISOString().slice(0, 10));
   const [savingContato, setSavingContato] = useState(false);
   const [savingAtivo, setSavingAtivo] = useState(false);
   const [editandoDados, setEditandoDados] = useState(false);
@@ -196,8 +198,16 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
         contatos: [{ ...novo, user: { name: session?.user?.name ?? "" } }, ...prev.contatos],
       }));
       setObsContato("");
+      setDataContato(new Date().toISOString().slice(0, 10));
     }
     setSavingContato(false);
+  }
+
+  async function deletarContato(contatoId: string) {
+    const res = await fetch(`/api/contatos/${contatoId}`, { method: "DELETE" });
+    if (res.ok) {
+      setAluno((prev) => ({ ...prev, contatos: prev.contatos.filter((c) => c.id !== contatoId) }));
+    }
   }
 
   return (
@@ -403,6 +413,31 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
               className="text-sm bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
+          {/* Data de Início */}
+          <div className="bg-slate-50 rounded-lg p-4">
+            <p className="text-xs text-slate-500 mb-2">Data de Início</p>
+            <input
+              type="date"
+              value={aluno.dataInicio ? aluno.dataInicio.slice(0, 10) : ""}
+              onChange={(e) => patchAluno({ dataInicio: e.target.value || null } as Partial<Aluno>)}
+              className="text-sm bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Acompanhar de Perto */}
+          <div className="bg-slate-50 rounded-lg p-4 flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="acompanharDePerto"
+              checked={aluno.acompanharDePerto}
+              onChange={(e) => patchAluno({ acompanharDePerto: e.target.checked } as Partial<Aluno>)}
+              className="w-4 h-4 accent-orange-500 cursor-pointer"
+            />
+            <label htmlFor="acompanharDePerto" className="text-sm font-medium text-slate-700 cursor-pointer select-none">
+              Acompanhar de Perto
+            </label>
+          </div>
         </div>
       </div>
 
@@ -466,7 +501,6 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
                 onChange={(e) => setDataContato(e.target.value)}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-xs text-slate-400 mt-0.5">Deixe em branco para usar a data de hoje</p>
             </div>
             <textarea
               value={obsContato}
@@ -491,11 +525,20 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
             ) : (
               <div className="space-y-3 max-h-64 overflow-y-auto">
                 {aluno.contatos.map((c) => (
-                  <div key={c.id} className="border-l-2 border-blue-200 pl-3">
+                  <div key={c.id} className="border-l-2 border-blue-200 pl-3 group relative">
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                       <span>{new Date(c.data).toLocaleDateString("pt-BR")}</span>
                       <span className="capitalize font-medium text-blue-600">{c.tipo}</span>
                       <span>&middot; {c.user.name}</span>
+                      <button
+                        onClick={() => deletarContato(c.id)}
+                        className="ml-auto opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition"
+                        title="Apagar contato"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
                     {c.obs && <p className="text-sm text-slate-600 mt-0.5">{c.obs}</p>}
                   </div>

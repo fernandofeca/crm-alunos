@@ -197,6 +197,16 @@ export default function AlunosClient({
             Taxa baixa
           </button>
           <button
+            onClick={() => handleFiltro("acompanhar")}
+            className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
+              filtro === "acompanhar"
+                ? "bg-orange-500 text-white border-orange-500"
+                : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            👁 Acompanhar
+          </button>
+          <button
             onClick={() => handleApenasAtivos(!apenasAtivos)}
             className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
               apenasAtivos

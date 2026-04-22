@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
     where.tutoryCreatedAt = { gte: trinta };
   } else if (filtro === "sem_contato") {
     where.contatos = { none: {} };
+  } else if (filtro === "acompanhar") {
+    where.acompanharDePerto = true;
   } else {
     const metasMatch = filtro.match(/^metas_(\d+)d$/);
     if (metasMatch) where.diasAtraso = parseInt(metasMatch[1], 10);
