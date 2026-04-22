@@ -112,79 +112,6 @@ async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, numbe
 }
 
 
-// Downloads the "relação de cadastros" report from /loja/relatorios
-// Returns map of email -> plano_nome for all students
-async function fetchPlanosRelatorio(cookie: string): Promise<{ map: Map<string, string>; debug: string }> {
-  const map = new Map<string, string>();
-  try {
-    // First, probe the reports page to find the actual download URL
-    const pageRes = await fetch("https://admin.tutory.com.br/loja/relatorios", {
-      headers: { Cookie: cookie },
-    });
-    const pageHtml = await pageRes.text();
-
-    if (pageHtml.length < 200) {
-      return { map, debug: `Página /loja/relatorios pequena (${pageHtml.length}b): "${pageHtml.slice(0, 100).replace(/\s+/g, " ")}"` };
-    }
-
-    // List all hrefs to find the real download link
-    const allHrefs = [...pageHtml.matchAll(/href=['"]([^'"]+)['"]/gi)].map(m => m[1]);
-    const relHrefs = allHrefs.filter(h =>
-      h.includes("relatorio") || h.includes("download") || h.includes("export") ||
-      h.includes("csv") || h.includes("xlsx")
-    );
-
-    if (relHrefs.length === 0) {
-      return { map, debug: `sem link de download em /loja/relatorios | links encontrados: ${allHrefs.slice(0, 20).join(" | ")}` };
-    }
-
-    // Try each candidate link until we get a non-HTML response
-    for (const href of relHrefs) {
-      const dlUrl = href.startsWith("http") ? href : `https://admin.tutory.com.br${href}`;
-      const dlRes = await fetch(dlUrl, { headers: { Cookie: cookie } });
-      const contentType = dlRes.headers.get("content-type") ?? "";
-      const body = await dlRes.text();
-      const path = dlUrl.replace("https://admin.tutory.com.br", "");
-
-      if (!contentType.includes("html") && body.length > 200) {
-        const sep = body.split("\n")[0].includes(";") ? ";" : ",";
-        const cols = body.split("\n")[0].replace(/^﻿/, "").split(sep).map(h => h.trim().replace(/['"]/g, "")).join(", ");
-        parseCSV(body, map);
-        return { map, debug: `${map.size} plano(s) via ${path} | colunas: ${cols}` };
-      }
-      // HTML page — show snippet and stop
-      const snippet = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 150);
-      return { map, debug: `${path} retornou HTML: ${snippet}` };
-    }
-    return { map, debug: `nenhum link válido encontrado entre: ${relHrefs.join(", ")}` };
-  } catch (e) {
-    return { map, debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
-  }
-}
-
-function parseCSV(csv: string, map: Map<string, string>) {
-  // Remove BOM and normalize line endings
-  const lines = csv.replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
-  if (lines.length < 2) return;
-
-  // Detect separator: semicolon (pt-BR) or comma
-  const sep = lines[0].includes(";") ? ";" : ",";
-  const headers = lines[0].split(sep).map((h) => h.trim().toLowerCase().replace(/['"]/g, ""));
-
-  // Find email and plan columns (flexible naming)
-  const emailIdx = headers.findIndex((h) => h.includes("email") || h.includes("e-mail"));
-  const planoIdx = headers.findIndex((h) => h.includes("concurso") || h.includes("plano") || h.includes("plan") || h.includes("produto") || h.includes("product"));
-
-  if (emailIdx === -1 || planoIdx === -1) return;
-
-  for (const line of lines.slice(1)) {
-    if (!line.trim()) continue;
-    const cols = line.split(sep).map((c) => c.trim().replace(/^["']|["']$/g, ""));
-    const email = cols[emailIdx]?.toLowerCase().trim();
-    const plano = cols[planoIdx]?.trim();
-    if (email?.includes("@") && plano) map.set(email, plano);
-  }
-}
 
 type QuestaoInfo = { taxaAcertos: number; totalQuestoes: number };
 
@@ -273,12 +200,10 @@ export async function POST() {
       { alunos: tutoryAlunos, paginacaoDebug, primeiroAlunoKeys },
       { map: diasAtrasoMap, debug: diasAtrasoDebug },
       { map: questoesMap, debug: questoesDebug },
-      { map: planosMap, debug: planosDebug },
     ] = await Promise.all([
       fetchTutoryAlunos(apiHeaders),
       fetchDiasAtraso(cookieHeader),
       cookieHeader ? fetchQuestoes(cookieHeader) : Promise.resolve({ map: new Map<string, QuestaoInfo>(), debug: "Sem cookie" }),
-      cookieHeader ? fetchPlanosRelatorio(cookieHeader) : Promise.resolve({ map: new Map<string, string>(), debug: "Sem cookie" }),
     ]);
 
     if (tutoryAlunos.length === 0) {
@@ -353,16 +278,7 @@ export async function POST() {
       }
     }
 
-    // 4. Update concurso for ALL CRM students from report CSV
-    let planosAtualizados = 0;
-    if (planosMap.size > 0) {
-      for (const [email, concurso] of planosMap) {
-        const r = await prisma.aluno.updateMany({ where: { email }, data: { concurso } });
-        planosAtualizados += r.count;
-      }
-    }
-
-    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, planosDebug: `${planosDebug} | ${planosAtualizados} atualizado(s)`, paginacaoDebug });
+    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, paginacaoDebug });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro na sincronização" },
