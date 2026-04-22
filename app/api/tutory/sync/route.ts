@@ -11,6 +11,7 @@ type TutoryAluno = {
   telefone: string | null;
   plano_nome: string | null;
   dt_expiracao: string | null;
+  dt_inicio?: string | null;
   dt_cadastro?: string | null;
   created_at?: string | null;
   [key: string]: unknown;
@@ -262,7 +263,7 @@ export async function POST() {
         const nome = t.nome?.trim() || "Sem nome";
         const concurso = t.plano_nome ?? "";
         const planoVencimento = t.dt_expiracao ? new Date(t.dt_expiracao) : null;
-        const dtCadastroRaw = (t.dt_cadastro ?? t.created_at ?? t.data_cadastro ?? null) as string | null;
+        const dtCadastroRaw = (t.dt_inicio ?? t.dt_cadastro ?? t.created_at ?? null) as string | null;
         const tutoryCreatedAt = dtCadastroRaw ? new Date(dtCadastroRaw) : null;
 
         let existente = email ? await prisma.aluno.findUnique({ where: { email } }) : null;
@@ -318,8 +319,8 @@ export async function POST() {
       }
     }
 
-    const comData = tutoryAlunos.filter(t => t.dt_cadastro || t.created_at || t.data_cadastro).length;
-    const primeiroEx = tutoryAlunos[0] ? `ex dt_cadastro="${tutoryAlunos[0].dt_cadastro}" created_at="${tutoryAlunos[0].created_at}"` : "";
+    const comData = tutoryAlunos.filter(t => t.dt_inicio || t.dt_cadastro || t.created_at).length;
+    const primeiroEx = tutoryAlunos[0] ? `dt_inicio="${tutoryAlunos[0].dt_inicio}" dt_cadastro="${tutoryAlunos[0].dt_cadastro}"` : "";
     return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, camposDebug: `campos: ${camposDisponiveis}`, dataDebug: `${comData}/${tutoryAlunos.length} com data cadastro. ${primeiroEx}`, paginacaoDebug });
   } catch (e) {
     return NextResponse.json(
