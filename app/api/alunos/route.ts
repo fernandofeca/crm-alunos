@@ -60,9 +60,13 @@ export async function GET(req: NextRequest) {
   if (ativo === "true") where.ativo = true;
   else if (ativo === "false") where.ativo = false;
 
-  const orderBy = ordenar === "metas_desc"
-    ? [{ diasAtraso: "desc" as const }, { nome: "asc" as const }]
-    : [{ nome: "asc" as const }];
+  const orderBy =
+    ordenar === "metas_desc"     ? [{ diasAtraso: "desc" as const }, { nome: "asc" as const }] :
+    ordenar === "taxa_desc"      ? [{ taxaAcertos: "desc" as const }, { nome: "asc" as const }] :
+    ordenar === "taxa_asc"       ? [{ taxaAcertos: "asc" as const }, { nome: "asc" as const }] :
+    ordenar === "inicio_desc"    ? [{ dataInicio: "desc" as const }, { nome: "asc" as const }] :
+    ordenar === "inicio_asc"     ? [{ dataInicio: "asc" as const }, { nome: "asc" as const }] :
+    [{ nome: "asc" as const }];
 
   const [alunos, total] = await Promise.all([
     prisma.aluno.findMany({

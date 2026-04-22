@@ -29,9 +29,13 @@ type Aluno = {
   taxaAcertos: number;
   totalQuestoes: number;
   diasAtraso: number;
+  dataInicio: string | null;
   disciplinas: Disciplina[];
   contatos: Contato[];
 };
+
+type SortField = "metas" | "taxa" | "dataInicio";
+type SortDir = "asc" | "desc";
 
 const METAS_FILTROS = [
   { value: "metas_em_dia", label: "Em dia", ativo: "bg-green-500 text-white border-green-500", inativo: "bg-white border-slate-300 text-slate-600 hover:bg-slate-50" },
@@ -90,15 +94,23 @@ export default function AlunosClient({
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(totalInicial);
-  const [sortMetas, setSortMetas] = useState(false);
+  const [sort, setSort] = useState<{ field: SortField; dir: SortDir } | null>(null);
   const pageSize = 50;
 
   useEffect(() => {
-    buscar("", filtroInicial, "", "", true, 0, false);
+    buscar("", filtroInicial, "", "", true, 0, null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function buscar(query: string, f: string, concurso: string, plano: string, ativos: boolean, p: number, sort: boolean) {
+  function sortToParam(s: { field: SortField; dir: SortDir } | null): string {
+    if (!s) return "";
+    if (s.field === "metas") return "metas_desc";
+    if (s.field === "taxa") return s.dir === "desc" ? "taxa_desc" : "taxa_asc";
+    if (s.field === "dataInicio") return s.dir === "desc" ? "inicio_desc" : "inicio_asc";
+    return "";
+  }
+
+  async function buscar(query: string, f: string, concurso: string, plano: string, ativos: boolean, p: number, s: typeof sort) {
     setLoading(true);
     const params = new URLSearchParams();
     if (query) params.set("q", query);
@@ -106,7 +118,8 @@ export default function AlunosClient({
     if (concurso) params.set("concurso", concurso);
     if (plano) params.set("planoTipo", plano);
     if (ativos) params.set("ativo", "true");
-    if (sort) params.set("ordenar", "metas_desc");
+    const ord = sortToParam(s);
+    if (ord) params.set("ordenar", ord);
     params.set("page", String(p));
     const res = await fetch(`/api/alunos?${params}`);
     const data = await res.json();
@@ -118,37 +131,65 @@ export default function AlunosClient({
 
   function handleQ(v: string) {
     setQ(v);
-    buscar(v, filtro, concursoFiltro, planoFiltro, apenasAtivos, 0, sortMetas);
+    buscar(v, filtro, concursoFiltro, planoFiltro, apenasAtivos, 0, sort);
   }
 
   function handleFiltro(v: string) {
     const next = filtro === v ? "" : v;
     setFiltro(next);
-    buscar(q, next, concursoFiltro, planoFiltro, apenasAtivos, 0, sortMetas);
+    buscar(q, next, concursoFiltro, planoFiltro, apenasAtivos, 0, sort);
   }
 
   function handleConcurso(v: string) {
     setConcursoFiltro(v);
-    buscar(q, filtro, v, planoFiltro, apenasAtivos, 0, sortMetas);
+    buscar(q, filtro, v, planoFiltro, apenasAtivos, 0, sort);
   }
 
   function handlePlano(v: string) {
     setPlanoFiltro(v);
-    buscar(q, filtro, concursoFiltro, v, apenasAtivos, 0, sortMetas);
+    buscar(q, filtro, concursoFiltro, v, apenasAtivos, 0, sort);
   }
 
   function handleApenasAtivos(v: boolean) {
     setApenasAtivos(v);
-    buscar(q, filtro, concursoFiltro, planoFiltro, v, 0, sortMetas);
+    buscar(q, filtro, concursoFiltro, planoFiltro, v, 0, sort);
   }
 
-  function handleSortMetas() {
-    const next = !sortMetas;
-    setSortMetas(next);
+  function handleSort(field: SortField, defaultDir: SortDir = "desc") {
+    let next: typeof sort;
+    if (!sort || sort.field !== field) {
+      next = { field, dir: defaultDir };
+    } else if (sort.dir === defaultDir) {
+      next = { field, dir: defaultDir === "desc" ? "asc" : "desc" };
+    } else {
+      next = null;
+    }
+    setSort(next);
     buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, 0, next);
   }
 
   const totalPages = Math.ceil(total / pageSize);
+
+  function SortBtn({ field, defaultDir = "desc", label }: { field: SortField; defaultDir?: SortDir; label: string }) {
+    const active = sort?.field === field;
+    const dir = active ? sort!.dir : null;
+    return (
+      <button
+        onClick={() => handleSort(field, defaultDir)}
+        className={`flex items-center gap-1 font-semibold uppercase tracking-wide transition ${active ? "text-blue-600" : "text-slate-500 hover:text-slate-700"}`}
+      >
+        {label}
+        <span className="flex flex-col leading-none">
+          <svg className={`w-2.5 h-2.5 ${active && dir === "asc" ? "text-blue-600" : "text-slate-300"}`} fill="currentColor" viewBox="0 0 10 6">
+            <path d="M5 0L10 6H0z" />
+          </svg>
+          <svg className={`w-2.5 h-2.5 ${active && dir === "desc" ? "text-blue-600" : "text-slate-300"}`} fill="currentColor" viewBox="0 0 10 6">
+            <path d="M5 6L0 0H10z" />
+          </svg>
+        </span>
+      </button>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -251,23 +292,12 @@ export default function AlunosClient({
             <tr>
               <th className="text-left px-4 py-3">Aluno</th>
               <th className="text-left px-4 py-3">Concurso</th>
+              <th className="text-left px-4 py-3"><SortBtn field="dataInicio" defaultDir="desc" label="Data Início" /></th>
               <th className="text-left px-4 py-3">WhatsApp</th>
-              <th className="text-left px-4 py-3">Taxa Acertos</th>
+              <th className="text-left px-4 py-3"><SortBtn field="taxa" defaultDir="desc" label="Taxa Acertos" /></th>
               <th className="text-left px-4 py-3">Disciplina baixa</th>
               <th className="text-left px-4 py-3">Assunto baixo</th>
-              <th className="text-left px-4 py-3">
-                <button
-                  onClick={handleSortMetas}
-                  className={`flex items-center gap-1 font-semibold uppercase tracking-wide transition ${sortMetas ? "text-orange-600" : "text-slate-500 hover:text-slate-700"}`}
-                  title={sortMetas ? "Ordenado: mais atrasados primeiro" : "Ordenar por atraso"}
-                >
-                  Metas
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d={sortMetas ? "M3 4h13M3 8h9M3 12h5m10 4l-4-4m0 0l-4 4m4-4v12" : "M3 4h13M3 8h9M3 12h5m10-1v9m0 0l-3-3m3 3l3-3"} />
-                  </svg>
-                </button>
-              </th>
+              <th className="text-left px-4 py-3"><SortBtn field="metas" defaultDir="desc" label="Metas" /></th>
               <th className="text-left px-4 py-3">Último contato</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -292,6 +322,9 @@ export default function AlunosClient({
                     ) : (
                       <span className="text-slate-300">—</span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+                    {a.dataInicio ? new Date(a.dataInicio).toLocaleDateString("pt-BR") : <span className="text-slate-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     {a.whatsapp ? (
@@ -373,7 +406,7 @@ export default function AlunosClient({
             })}
             {alunos.length === 0 && !loading && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={10} className="px-4 py-10 text-center text-slate-400">
                   Nenhum aluno encontrado
                 </td>
               </tr>
@@ -389,14 +422,14 @@ export default function AlunosClient({
         {totalPages > 1 && (
           <div className="flex gap-2">
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page - 1, sortMetas)}
+              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page - 1, sort)}
               disabled={page === 0 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               ← Anterior
             </button>
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page + 1, sortMetas)}
+              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page + 1, sort)}
               disabled={page >= totalPages - 1 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
