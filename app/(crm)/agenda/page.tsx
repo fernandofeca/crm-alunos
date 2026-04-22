@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
 
 type Aluno = { id: string; nome: string };
 type Evento = {
@@ -212,6 +213,13 @@ export default function AgendaPage() {
           </h2>
         </div>
         <div className="flex gap-2">
+          <Link href="/agenda/importar"
+            className="flex items-center gap-1.5 border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm font-medium px-3 py-2 rounded-lg transition">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Importar
+          </Link>
           <button onClick={() => setMostrarSync((v) => !v)}
             className="flex items-center gap-1.5 border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm font-medium px-3 py-2 rounded-lg transition">
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">

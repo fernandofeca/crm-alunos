@@ -90,14 +90,15 @@ model Tarefa {
 }
 
 model Evento {
-  id        String   @id @default(cuid())
-  titulo    String
-  descricao String   @default("")
-  data      DateTime
-  tipo      String   @default("lembrete")
-  alunoId   String?
-  aluno     Aluno?   @relation(fields: [alunoId], references: [id], onDelete: SetNull)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  titulo      String
+  descricao   String   @default("")
+  data        DateTime
+  tipo        String   @default("lembrete")
+  externalUid String?
+  alunoId     String?
+  aluno       Aluno?   @relation(fields: [alunoId], references: [id], onDelete: SetNull)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
 }
