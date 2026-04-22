@@ -297,25 +297,17 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
           {/* Status */}
           <div className="bg-slate-50 rounded-lg p-4">
             <p className="text-xs text-slate-500 mb-2">Status</p>
-            {(session?.user as { role?: string })?.role === "admin" ? (
-              <button
-                onClick={toggleAtivo}
-                disabled={savingAtivo}
-                className={`px-4 py-1.5 rounded-full text-sm font-semibold transition disabled:opacity-50 ${
-                  aluno.ativo
-                    ? "bg-blue-600 hover:bg-blue-700 text-white"
-                    : "bg-slate-200 hover:bg-slate-300 text-slate-600"
-                }`}
-              >
-                {aluno.ativo ? "Ativo" : "Inativo"}
-              </button>
-            ) : (
-              <span className={`px-4 py-1.5 rounded-full text-sm font-semibold inline-block ${
-                aluno.ativo ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600"
-              }`}>
-                {aluno.ativo ? "Ativo" : "Inativo"}
-              </span>
-            )}
+            <button
+              onClick={toggleAtivo}
+              disabled={savingAtivo}
+              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition disabled:opacity-50 ${
+                aluno.ativo
+                  ? "bg-blue-600 hover:bg-blue-700 text-white"
+                  : "bg-slate-200 hover:bg-slate-300 text-slate-600"
+              }`}
+            >
+              {aluno.ativo ? "Ativo" : "Inativo"}
+            </button>
           </div>
 
           {/* Média Geral */}

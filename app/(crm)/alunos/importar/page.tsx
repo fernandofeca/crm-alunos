@@ -1,21 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 
 type ColunasDetectadas = { colNome: string; colEmail: string; colCpf: string; colCelular: string; colConcurso: string; colStatus: string; colVencimento: string };
 type Resultado = { criados: number; atualizados: number; erros: string[]; colunas_detectadas?: ColunasDetectadas };
 
 export default function ImportarPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
-
-  useEffect(() => {
-    if (status === "authenticated" && (session?.user as { role?: string })?.role !== "admin") {
-      router.replace("/alunos");
-    }
-  }, [session, status, router]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [arrastando, setArrastando] = useState(false);

@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import { canDo, forbidden } from "@/lib/permissions";
 
 type Linha = Record<string, unknown>;
 
@@ -30,7 +29,6 @@ function parseData(val: unknown): Date | null {
   if (!val) return null;
   if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
   if (typeof val === "number") {
-    // Excel serial date
     const info = XLSX.SSF.parse_date_code(val);
     if (info) return new Date(info.y, info.m - 1, info.d);
   }
@@ -49,7 +47,6 @@ function parseData(val: unknown): Date | null {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  if (!canDo(session, "importar_xls")) return forbidden();
 
   let formData: FormData;
   try {
@@ -111,11 +108,9 @@ export async function POST(req: NextRequest) {
     const celular  = limparNumero(colCelular  ? primeiroValor(row, colCelular) : "");
     const concurso = colConcurso  ? primeiroValor(row, colConcurso) : "";
 
-    // Status: só marca ativo=true se coluna existir E valor for "ativo"
     const statusRaw = colStatus ? primeiroValor(row, colStatus).toLowerCase().trim() : null;
     const ativo = statusRaw !== null ? statusRaw === "ativo" : undefined;
 
-    // Vencimento do plano
     const vencimentoRaw = colVencimento ? row[colVencimento] : null;
     const planoVencimento = vencimentoRaw ? parseData(vencimentoRaw) : null;
 

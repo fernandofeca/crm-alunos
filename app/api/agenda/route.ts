@@ -1,14 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { canDo, forbidden } from "@/lib/permissions";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
   const { searchParams } = req.nextUrl;
-  const mes = searchParams.get("mes"); // YYYY-MM
+  const mes = searchParams.get("mes");
   const where: Record<string, unknown> = {};
 
   if (mes) {
@@ -31,7 +30,6 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  if (!canDo(session, "gerenciar_agenda")) return forbidden();
 
   const body = await req.json();
   const evento = await prisma.evento.create({

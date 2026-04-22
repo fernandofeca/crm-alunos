@@ -25,20 +25,13 @@ export default function Navbar() {
           <Link href="/tarefas" className="text-slate-600 hover:text-blue-600 transition">
             Tarefas
           </Link>
-          {(session?.user as { role?: string })?.role?.toLowerCase() === "admin" && (
-            <Link href="/usuarios" className="text-slate-600 hover:text-blue-600 transition">
-              Usuários
-            </Link>
-          )}
+          <Link href="/usuarios" className="text-slate-600 hover:text-blue-600 transition">
+            Usuários
+          </Link>
         </div>
       </div>
       <div className="flex items-center gap-4">
-        <span className="text-sm text-slate-600">
-          {session?.user?.name} &middot;{" "}
-          <span className="capitalize text-slate-400">
-            {(session?.user as { role?: string })?.role}
-          </span>
-        </span>
+        <span className="text-sm text-slate-600">{session?.user?.name}</span>
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
           className="text-sm text-red-500 hover:underline"

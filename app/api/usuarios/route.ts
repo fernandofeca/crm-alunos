@@ -2,14 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { isAdmin, canDo, forbidden } from "@/lib/permissions";
 
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
   const usuarios = await prisma.user.findMany({
-    select: { id: true, name: true, email: true, role: true, permissoes: true, createdAt: true },
+    select: { id: true, name: true, email: true, role: true, createdAt: true },
     orderBy: { name: "asc" },
   });
 
@@ -19,7 +18,6 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  if (!isAdmin(session)) return forbidden();
 
   const { name, email, password, role } = await req.json();
 
@@ -35,7 +33,7 @@ export async function POST(req: NextRequest) {
   const hash = await bcrypt.hash(password, 10);
   const usuario = await prisma.user.create({
     data: { name, email, password: hash, role: role ?? "equipe" },
-    select: { id: true, name: true, email: true, role: true, permissoes: true, createdAt: true },
+    select: { id: true, name: true, email: true, role: true, createdAt: true },
   });
 
   return NextResponse.json(usuario, { status: 201 });
