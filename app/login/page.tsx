@@ -33,8 +33,8 @@ export default function LoginPage() {
     <div style={{ display: "flex", minHeight: "100vh" }}>
       {/* Lado esquerdo — foto */}
       <div
-        className="hidden lg:block lg:w-1/2"
-        style={{ position: "relative", overflow: "hidden" }}
+        className="hidden lg:block"
+        style={{ position: "relative", overflow: "hidden", width: "42%" }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -53,18 +53,18 @@ export default function LoginPage() {
 
       {/* Lado direito — formulário */}
       <div
-        className="w-full lg:w-1/2 flex items-center justify-center p-8"
-        style={{ backgroundColor: "#111111" }}
+        className="w-full flex items-center justify-center p-8"
+        style={{ backgroundColor: "#111111", flex: 1 }}
       >
         <div style={{ width: "100%", maxWidth: "360px" }}>
-          {/* Logo CG — recorte circular */}
+          {/* Logo CG — recorte circular centralizado */}
           <div
             style={{
-              width: "120px",
-              height: "120px",
+              width: "110px",
+              height: "110px",
               borderRadius: "50%",
               overflow: "hidden",
-              margin: "0 auto 24px",
+              margin: "0 auto 28px",
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -72,11 +72,10 @@ export default function LoginPage() {
               src="/Logo.png"
               alt="CG Concursos Públicos"
               style={{
-                width: "180%",
-                height: "180%",
-                marginLeft: "-40%",
-                marginTop: "-40%",
+                width: "100%",
+                height: "100%",
                 objectFit: "cover",
+                objectPosition: "center",
               }}
             />
           </div>
