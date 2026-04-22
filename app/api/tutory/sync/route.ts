@@ -127,56 +127,36 @@ async function fetchPlanosRelatorio(cookie: string): Promise<{ map: Map<string, 
       return { map, debug: `Página /loja/relatorios pequena (${pageHtml.length}b): "${pageHtml.slice(0, 100).replace(/\s+/g, " ")}"` };
     }
 
-    // Look for download links or form actions pointing to the cadastros report
-    const downloadMatch =
-      pageHtml.match(/href=['"]([^'"]*(?:cadastro|download|export|csv)[^'"]*)['"]/i) ??
-      pageHtml.match(/action=['"]([^'"]*relatorio[^'"]*)['"]/i);
+    // List all hrefs to find the real download link
+    const allHrefs = [...pageHtml.matchAll(/href=['"]([^'"]+)['"]/gi)].map(m => m[1]);
+    const relHrefs = allHrefs.filter(h =>
+      h.includes("relatorio") || h.includes("download") || h.includes("export") ||
+      h.includes("csv") || h.includes("xlsx")
+    );
 
-    if (downloadMatch) {
-      const dlUrl = downloadMatch[1].startsWith("http")
-        ? downloadMatch[1]
-        : `https://admin.tutory.com.br${downloadMatch[1]}`;
+    if (relHrefs.length === 0) {
+      return { map, debug: `sem link de download em /loja/relatorios | links encontrados: ${allHrefs.slice(0, 20).join(" | ")}` };
+    }
+
+    // Try each candidate link until we get a non-HTML response
+    for (const href of relHrefs) {
+      const dlUrl = href.startsWith("http") ? href : `https://admin.tutory.com.br${href}`;
       const dlRes = await fetch(dlUrl, { headers: { Cookie: cookie } });
-      const contentType = dlRes.headers.get("content-type") ?? "?";
+      const contentType = dlRes.headers.get("content-type") ?? "";
       const body = await dlRes.text();
+      const path = dlUrl.replace("https://admin.tutory.com.br", "");
 
-      // If HTML page, look inside for the actual CSV download trigger
-      if (contentType.includes("html")) {
-        // Look for direct CSV/Excel download links or form actions
-        const csvMatch =
-          body.match(/href=['"]([^'"]*(?:download|export|csv|xlsx|xls|cadastro)[^'"]*)['"]/i) ??
-          body.match(/action=['"]([^'"]+)['"]/i);
-        if (csvMatch) {
-          const csvUrl = csvMatch[1].startsWith("http")
-            ? csvMatch[1]
-            : `https://admin.tutory.com.br${csvMatch[1]}`;
-          const csvRes = await fetch(csvUrl, { headers: { Cookie: cookie } });
-          const csvBody = await csvRes.text();
-          const csvType = csvRes.headers.get("content-type") ?? "";
-          if (!csvType.includes("html") && csvBody.length > 200) {
-            parseCSV(csvBody, map);
-            const sep = csvBody.split("\n")[0].includes(";") ? ";" : ",";
-            const cols = csvBody.split("\n")[0].replace(/^﻿/, "").split(sep).map(h => h.trim().replace(/['"]/g, "")).join(", ");
-            return { map, debug: `${map.size} plano(s) via ${csvUrl.replace("https://admin.tutory.com.br", "")} | colunas: ${cols}` };
-          }
-        }
-        const snippet = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
-        return { map, debug: `${dlUrl.replace("https://admin.tutory.com.br", "")} é HTML | snippet: ${snippet}` };
-      }
-
-      if (body.length > 200) {
+      if (!contentType.includes("html") && body.length > 200) {
         const sep = body.split("\n")[0].includes(";") ? ";" : ",";
         const cols = body.split("\n")[0].replace(/^﻿/, "").split(sep).map(h => h.trim().replace(/['"]/g, "")).join(", ");
         parseCSV(body, map);
-        const path = dlUrl.replace("https://admin.tutory.com.br", "");
         return { map, debug: `${map.size} plano(s) via ${path} | colunas: ${cols}` };
       }
-      return { map, debug: `${dlUrl.replace("https://admin.tutory.com.br", "")} vazio (${body.length}b)` };
+      // HTML page — show snippet and stop
+      const snippet = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 150);
+      return { map, debug: `${path} retornou HTML: ${snippet}` };
     }
-
-    // Show page structure for diagnosis
-    const snippet = pageHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 400);
-    return { map, debug: `página OK (${pageHtml.length}b) mas sem link de download encontrado | snippet: ${snippet}` };
+    return { map, debug: `nenhum link válido encontrado entre: ${relHrefs.join(", ")}` };
   } catch (e) {
     return { map, debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
   }
