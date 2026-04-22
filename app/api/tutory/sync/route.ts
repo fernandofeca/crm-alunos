@@ -139,16 +139,17 @@ async function fetchQuestoes(cookie: string): Promise<{ map: Map<string, Questao
   const map = new Map<string, QuestaoInfo>();
   try {
     function parsePage(html: string) {
-      const rows = html.split("<tr>").slice(2); // skip header rows
+      // Split on any <tr> tag (may have attributes like <tr class="...">)
+      const rows = html.split(/<tr[^>]*>/i).slice(2); // skip header rows
       for (const row of rows) {
-        const emailMatch = row.match(/href='mailto:([^']+)'/);
-        const taxaMatch = row.match(/([\d]+[,.][\d]+)\s*%/);
-        const cells = [...row.matchAll(/<td[^>]*>\s*([\d.]+)\s*<\/td>/g)];
-        if (!emailMatch || !taxaMatch || cells.length < 2) continue;
+        const emailMatch = row.match(/href=['"]mailto:([^'"]+)['"]/i);
+        const taxaMatch = row.match(/([\d]+(?:[,.][\d]+)?)\s*%/);
+        const cells = [...row.matchAll(/<td[^>]*>\s*([\d.]+)\s*<\/td>/gi)];
+        if (!emailMatch || !taxaMatch || cells.length < 1) continue;
         const email = emailMatch[1].toLowerCase().trim();
-        // Taxa: "93.71" or "93,71" → 93.71
+        // Taxa: "93.71" or "93,71" or "80" → 93.71 / 80.0
         const taxa = parseFloat(taxaMatch[1].replace(",", "."));
-        // Questoes: "2.115" (BR thousands) → remove dots → 2115
+        // First numeric cell is total questoes: "2.115" (BR thousands) → 2115
         const totalQuestoes = parseInt(cells[0][1].replace(/\./g, ""), 10);
         if (email && !isNaN(taxa) && !isNaN(totalQuestoes) && totalQuestoes > 0) {
           map.set(email, { taxaAcertos: taxa, totalQuestoes });
@@ -282,13 +283,15 @@ export async function POST() {
     }
 
     // 3. Update taxaAcertos/totalQuestoes for ALL CRM students based on questoes page
+    let questoesAtualizados = 0;
     if (questoesMap.size > 0) {
       for (const [email, { taxaAcertos, totalQuestoes }] of questoesMap) {
-        await prisma.aluno.updateMany({ where: { email }, data: { taxaAcertos, totalQuestoes } });
+        const r = await prisma.aluno.updateMany({ where: { email }, data: { taxaAcertos, totalQuestoes } });
+        questoesAtualizados += r.count;
       }
     }
 
-    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug });
+    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM` });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro na sincronização" },
