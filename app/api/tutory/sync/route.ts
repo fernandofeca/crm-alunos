@@ -135,52 +135,60 @@ async function fetchDiasAtraso(headers: Record<string, string>): Promise<{ map: 
 type QuestaoInfo = { taxaAcertos: number; totalQuestoes: number };
 
 // Returns map of email (lowercase) -> questao stats from /alunos/questoes (last 30 days)
-async function fetchQuestoes(cookie: string): Promise<Map<string, QuestaoInfo>> {
+async function fetchQuestoes(cookie: string): Promise<{ map: Map<string, QuestaoInfo>; debug: string }> {
   const map = new Map<string, QuestaoInfo>();
   try {
     function parsePage(html: string) {
-      // Each row: <td>nome</td><td>questoes</td><td>acertos</td><td>XX.XX%</td><td><a href='mailto:email'>
       const rows = html.split("<tr>").slice(2); // skip header rows
       for (const row of rows) {
         const emailMatch = row.match(/href='mailto:([^']+)'/);
-        const taxaMatch = row.match(/([\d,]+(?:\.\d+)?)\s*%/);
-        const cells = [...row.matchAll(/<td[^>]*>\s*([\d.,]+)\s*<\/td>/g)];
+        const taxaMatch = row.match(/([\d]+[,.][\d]+)\s*%/);
+        const cells = [...row.matchAll(/<td[^>]*>\s*([\d.]+)\s*<\/td>/g)];
         if (!emailMatch || !taxaMatch || cells.length < 2) continue;
         const email = emailMatch[1].toLowerCase().trim();
+        // Taxa: "93.71" or "93,71" → 93.71
         const taxa = parseFloat(taxaMatch[1].replace(",", "."));
-        // questoes is first numeric cell (Brazilian format: "2.115" = 2115)
-        const totalQuestoes = parseInt(cells[0][1].replace(/\./g, "").replace(",", ""), 10);
-        if (email && !isNaN(taxa) && !isNaN(totalQuestoes)) {
+        // Questoes: "2.115" (BR thousands) → remove dots → 2115
+        const totalQuestoes = parseInt(cells[0][1].replace(/\./g, ""), 10);
+        if (email && !isNaN(taxa) && !isNaN(totalQuestoes) && totalQuestoes > 0) {
           map.set(email, { taxaAcertos: taxa, totalQuestoes });
         }
       }
     }
 
-    const firstHtml = await fetch("https://admin.tutory.com.br/alunos/questoes?t=30&p=1", {
+    // Pagination links are ?p=N&t=30&m=50 format
+    const firstHtml = await fetch("https://admin.tutory.com.br/alunos/questoes?p=1&t=30&m=50", {
       headers: { Cookie: cookie },
     }).then((r) => r.text());
 
-    if (firstHtml.includes('document.location.href = "/login"')) return map;
+    if (firstHtml.includes('document.location.href = "/login"')) {
+      return { map, debug: "Cookie inválido para questoes" };
+    }
+    if (firstHtml.length < 1000) {
+      return { map, debug: `Página questoes muito pequena (${firstHtml.length} bytes)` };
+    }
+
     parsePage(firstHtml);
 
-    const totalPagesMatch = firstHtml.match(/href="\?t=30&p=(\d+)">Última/);
+    // Match any pagination "Última" link regardless of param order
+    const totalPagesMatch = firstHtml.match(/\?p=(\d+)[^"]*">Última/);
     const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1], 10) : 1;
 
     for (let start = 2; start <= totalPages; start += 5) {
       const batch = [];
       for (let p = start; p < start + 5 && p <= totalPages; p++) {
         batch.push(
-          fetch(`https://admin.tutory.com.br/alunos/questoes?t=30&p=${p}`, { headers: { Cookie: cookie } })
+          fetch(`https://admin.tutory.com.br/alunos/questoes?p=${p}&t=30&m=50`, { headers: { Cookie: cookie } })
             .then((r) => r.text())
             .then(parsePage)
         );
       }
       await Promise.all(batch);
     }
-  } catch {
-    // Non-fatal
+    return { map, debug: `OK — ${map.size} aluno(s) em ${totalPages} página(s)` };
+  } catch (e) {
+    return { map, debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
   }
-  return map;
 }
 
 export async function POST() {
@@ -207,10 +215,10 @@ export async function POST() {
 
     const cookieHeader = sessionCookie ?? "";
 
-    const [tutoryAlunos, { map: diasAtrasoMap, debug: diasAtrasoDebug }, questoesMap] = await Promise.all([
+    const [tutoryAlunos, { map: diasAtrasoMap, debug: diasAtrasoDebug }, { map: questoesMap, debug: questoesDebug }] = await Promise.all([
       fetchTutoryAlunos(headers),
       fetchDiasAtraso(headers),
-      cookieHeader ? fetchQuestoes(cookieHeader) : Promise.resolve(new Map<string, QuestaoInfo>()),
+      cookieHeader ? fetchQuestoes(cookieHeader) : Promise.resolve({ map: new Map<string, QuestaoInfo>(), debug: "Sem cookie" }),
     ]);
 
     if (tutoryAlunos.length === 0) {
@@ -279,7 +287,7 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesSync: questoesMap.size });
+    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro na sincronização" },

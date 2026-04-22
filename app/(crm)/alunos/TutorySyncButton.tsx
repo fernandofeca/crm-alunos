@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Resultado = { criados: number; atualizados: number; total: number; erros: string[]; error?: string; diasAtrasoDebug?: string };
+type Resultado = { criados: number; atualizados: number; total: number; erros: string[]; error?: string; diasAtrasoDebug?: string; questoesDebug?: string };
 
 export default function TutorySyncButton({ onSync }: { onSync?: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -61,9 +61,15 @@ export default function TutorySyncButton({ onSync }: { onSync?: () => void }) {
                     <span className="font-semibold text-blue-600">{resultado.atualizados}</span>
                   </div>
                   {resultado.diasAtrasoDebug && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Atrasos</span>
-                      <span className="font-semibold text-xs text-slate-600 text-right max-w-[160px]">{resultado.diasAtrasoDebug}</span>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-slate-500 shrink-0">Atrasos</span>
+                      <span className="font-semibold text-xs text-slate-600 text-right">{resultado.diasAtrasoDebug}</span>
+                    </div>
+                  )}
+                  {resultado.questoesDebug && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-slate-500 shrink-0">Questões</span>
+                      <span className="font-semibold text-xs text-slate-600 text-right">{resultado.questoesDebug}</span>
                     </div>
                   )}
                   {resultado.erros.length > 0 && (
