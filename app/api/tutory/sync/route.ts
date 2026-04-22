@@ -153,15 +153,24 @@ async function fetchPlanosAlunos(cookie: string): Promise<{ map: Map<string, str
       }
     }
 
-    const firstHtml = await fetch("https://admin.tutory.com.br/alunos?p=1", {
-      headers: { Cookie: cookie },
-    }).then((r) => r.text());
+    // Try /alunos first, fall back to /consulta (some accounts redirect there)
+    async function fetchPage(p: number): Promise<string> {
+      const r = await fetch(`https://admin.tutory.com.br/alunos?p=${p}`, { headers: { Cookie: cookie } });
+      const html = await r.text();
+      if (html.length < 500 && html.includes('"consulta"')) {
+        const r2 = await fetch(`https://admin.tutory.com.br/consulta?p=${p}`, { headers: { Cookie: cookie } });
+        return r2.text();
+      }
+      return html;
+    }
+
+    const firstHtml = await fetchPage(1);
 
     if (firstHtml.length < 500) {
-      return { map, debug: `Página /alunos pequena (${firstHtml.length}b): "${firstHtml.slice(0, 150).replace(/\s+/g, " ")}"` };
+      return { map, debug: `Página pequena (${firstHtml.length}b): "${firstHtml.slice(0, 150).replace(/\s+/g, " ")}"` };
     }
     if (firstHtml.includes('document.location.href = "/login"') || firstHtml.includes('href="/login"')) {
-      return { map, debug: "Cookie inválido para /alunos — redirecionou para login" };
+      return { map, debug: "Cookie inválido — redirecionou para login" };
     }
 
     parsePage(firstHtml);
@@ -173,11 +182,7 @@ async function fetchPlanosAlunos(cookie: string): Promise<{ map: Map<string, str
     for (let start = 2; start <= totalPages; start += 5) {
       const batch = [];
       for (let p = start; p < start + 5 && p <= totalPages; p++) {
-        batch.push(
-          fetch(`https://admin.tutory.com.br/alunos?p=${p}`, { headers: { Cookie: cookie } })
-            .then((r) => r.text())
-            .then(parsePage)
-        );
+        batch.push(fetchPage(p).then(parsePage));
       }
       await Promise.all(batch);
     }
