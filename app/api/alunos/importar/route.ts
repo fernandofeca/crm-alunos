@@ -88,12 +88,16 @@ export async function POST(req: NextRequest) {
     "vencimento do plano", "vencimento", "validade", "expiracao", "expiração",
     "data vencimento", "data de vencimento", "venc",
   ]);
+  const colDataInicio = encontrarChave(headers, [
+    "data de início", "data de inicio", "data início", "data inicio",
+    "dt_ini", "início", "inicio", "data_inicio",
+  ]);
 
   const resultados = {
     criados: 0,
     atualizados: 0,
     erros: [] as string[],
-    colunas_detectadas: { colNome, colEmail, colCpf, colCelular, colConcurso, colStatus, colVencimento },
+    colunas_detectadas: { colNome, colEmail, colCpf, colCelular, colConcurso, colStatus, colVencimento, colDataInicio },
   };
 
   const emailsProcessados = new Set<string>();
@@ -114,6 +118,9 @@ export async function POST(req: NextRequest) {
     const vencimentoRaw = colVencimento ? row[colVencimento] : null;
     const planoVencimento = vencimentoRaw ? parseData(vencimentoRaw) : null;
 
+    const dataInicioRaw = colDataInicio ? row[colDataInicio] : null;
+    const dataInicio = dataInicioRaw ? parseData(dataInicioRaw) : null;
+
     if (!nome && !email && !cpf && !celular) continue;
 
     try {
@@ -129,9 +136,10 @@ export async function POST(req: NextRequest) {
               nome:     nome     || existente.nome,
               cpf:      cpf      || existente.cpf,
               whatsapp: celular  || existente.whatsapp,
-              concurso: concurso || existente.concurso,
-              ...(ativo !== undefined ? { ativo } : {}),
+              ...(concurso      ? { concurso }      : {}),
               ...(planoVencimento ? { planoVencimento } : {}),
+              ...(dataInicio    ? { dataInicio }    : {}),
+              ...(ativo !== undefined ? { ativo } : {}),
             },
           });
           resultados.atualizados++;
@@ -145,6 +153,7 @@ export async function POST(req: NextRequest) {
               concurso,
               ...(ativo !== undefined ? { ativo } : {}),
               ...(planoVencimento ? { planoVencimento } : {}),
+              ...(dataInicio ? { dataInicio } : {}),
             },
           });
           resultados.criados++;
@@ -157,9 +166,10 @@ export async function POST(req: NextRequest) {
             data: {
               nome:     nome     || existentePorCpf.nome,
               whatsapp: celular  || existentePorCpf.whatsapp,
-              concurso: concurso || existentePorCpf.concurso,
-              ...(ativo !== undefined ? { ativo } : {}),
+              ...(concurso      ? { concurso }      : {}),
               ...(planoVencimento ? { planoVencimento } : {}),
+              ...(dataInicio    ? { dataInicio }    : {}),
+              ...(ativo !== undefined ? { ativo } : {}),
             },
           });
           resultados.atualizados++;
