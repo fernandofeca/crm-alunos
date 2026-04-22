@@ -8,8 +8,9 @@ export const authConfig: NextAuthConfig = {
       const isLoggedIn = !!auth?.user;
       const isLoginPage = nextUrl.pathname === "/login";
       const isApi = nextUrl.pathname.startsWith("/api");
+      const isStatic = /\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf)$/i.test(nextUrl.pathname);
 
-      if (isApi) return true;
+      if (isApi || isStatic) return true;
       if (!isLoggedIn && !isLoginPage) return false;
       if (isLoggedIn && isLoginPage) {
         return Response.redirect(new URL("/", nextUrl));
