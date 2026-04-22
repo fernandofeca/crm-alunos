@@ -16,26 +16,6 @@ type TutoryAluno = {
   [key: string]: unknown;
 };
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const token = process.env.TUTORY_TOKEN;
-  if (token) {
-    return { Authorization: `Bearer ${token}` };
-  }
-  // Fallback: session cookie via login
-  const account = process.env.TUTORY_ACCOUNT ?? "";
-  const password = process.env.TUTORY_PASSWORD ?? "";
-  const res = await fetch("https://admin.tutory.com.br/intent/login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "X-Requested-With": "XMLHttpRequest",
-    },
-    body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
-  });
-  const cookie = res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
-  if (!cookie) throw new Error("Falha na autenticação do Tutory.");
-  return { Cookie: cookie };
-}
 
 type FetchAlunosResult = { alunos: TutoryAluno[]; paginacaoDebug: string; primeiroAlunoKeys: string };
 
@@ -80,23 +60,10 @@ function isAtivo(aluno: TutoryAluno): boolean {
 }
 
 // Returns map of email (lowercase) -> diasAtraso, plus diagnostic info
-async function fetchDiasAtraso(headers: Record<string, string>): Promise<{ map: Map<string, number>; debug: string }> {
+async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, number>; debug: string }> {
   const map = new Map<string, number>();
   try {
-    // Need a session cookie — Bearer token doesn't work for HTML pages
-    let cookie = (headers["Cookie"] ?? "").match(/PHPSESSID=[^;]+/)?.[0];
-    if (!cookie) {
-      const account = process.env.TUTORY_ACCOUNT ?? "";
-      const password = process.env.TUTORY_PASSWORD ?? "";
-      if (!account || !password) return { map, debug: "TUTORY_ACCOUNT/PASSWORD não configurados" };
-      const res = await fetch("https://admin.tutory.com.br/intent/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" },
-        body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
-      });
-      cookie = res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
-      if (!cookie) return { map, debug: `Login falhou (status ${res.status})` };
-    }
+    if (!cookie) return { map, debug: "Sem cookie de sessão" };
 
     function parsePage(html: string) {
       const blocks = html.split('class="student-list-item"');
@@ -190,11 +157,11 @@ async function fetchPlanosAlunos(cookie: string): Promise<{ map: Map<string, str
       headers: { Cookie: cookie },
     }).then((r) => r.text());
 
-    if (firstHtml.includes('document.location.href = "/login"')) {
-      return { map, debug: "Cookie inválido para /alunos" };
-    }
     if (firstHtml.length < 500) {
-      return { map, debug: `Página /alunos muito pequena (${firstHtml.length} bytes)` };
+      return { map, debug: `Página /alunos pequena (${firstHtml.length}b): "${firstHtml.slice(0, 150).replace(/\s+/g, " ")}"` };
+    }
+    if (firstHtml.includes('document.location.href = "/login"') || firstHtml.includes('href="/login"')) {
+      return { map, debug: "Cookie inválido para /alunos — redirecionou para login" };
     }
 
     parsePage(firstHtml);
@@ -294,29 +261,28 @@ async function fetchQuestoes(cookie: string): Promise<{ map: Map<string, Questao
   }
 }
 
+async function getSessionCookie(): Promise<string> {
+  const account = process.env.TUTORY_ACCOUNT ?? "";
+  const password = process.env.TUTORY_PASSWORD ?? "";
+  if (!account || !password) return "";
+  const res = await fetch("https://admin.tutory.com.br/intent/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" },
+    body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
+  });
+  return res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+}
+
 export async function POST() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
   try {
-    const headers = await getAuthHeaders();
-
-    // Get session cookie for HTML scraping
-    let sessionCookie: string | undefined;
-    if (!headers["Cookie"]) {
-      const account = process.env.TUTORY_ACCOUNT ?? "";
-      const password = process.env.TUTORY_PASSWORD ?? "";
-      const loginRes = await fetch("https://admin.tutory.com.br/intent/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" },
-        body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
-      });
-      sessionCookie = loginRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
-    } else {
-      sessionCookie = headers["Cookie"].match(/PHPSESSID=[^;]+/)?.[0];
-    }
-
-    const cookieHeader = sessionCookie ?? "";
+    // Single login — share cookie across all HTML scraping functions
+    const cookieHeader = await getSessionCookie();
+    const apiHeaders: Record<string, string> = process.env.TUTORY_TOKEN
+      ? { Authorization: `Bearer ${process.env.TUTORY_TOKEN}` }
+      : { Cookie: cookieHeader };
 
     const [
       { alunos: tutoryAlunos, paginacaoDebug, primeiroAlunoKeys },
@@ -324,8 +290,8 @@ export async function POST() {
       { map: questoesMap, debug: questoesDebug },
       { map: planosMap, debug: planosDebug },
     ] = await Promise.all([
-      fetchTutoryAlunos(headers),
-      fetchDiasAtraso(headers),
+      fetchTutoryAlunos(apiHeaders),
+      fetchDiasAtraso(cookieHeader),
       cookieHeader ? fetchQuestoes(cookieHeader) : Promise.resolve({ map: new Map<string, QuestaoInfo>(), debug: "Sem cookie" }),
       cookieHeader ? fetchPlanosAlunos(cookieHeader) : Promise.resolve({ map: new Map<string, string>(), debug: "Sem cookie" }),
     ]);
