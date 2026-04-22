@@ -346,7 +346,7 @@ export default function AlunoDetalhe({ aluno: initial }: { aluno: Aluno }) {
           <div className="bg-slate-50 rounded-lg p-4">
             <p className="text-xs text-slate-500 mb-2">Tipo do Plano</p>
             <div className="flex flex-wrap gap-1.5">
-              {(["Mentoria", "Posse", "Diamante"] as const).map((tipo) => (
+              {(["Mentoria da Posse", "Mentoria Diamante", "Cronograma Ouro", "Cronograma Outros"] as const).map((tipo) => (
                 <button
                   key={tipo}
                   onClick={() => patchAluno({ planoTipo: tipo } as Partial<Aluno>)}
