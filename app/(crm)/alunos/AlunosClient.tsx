@@ -90,14 +90,15 @@ export default function AlunosClient({
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(totalInicial);
+  const [sortMetas, setSortMetas] = useState(false);
   const pageSize = 50;
 
   useEffect(() => {
-    buscar("", filtroInicial, "", "", true, 0);
+    buscar("", filtroInicial, "", "", true, 0, false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function buscar(query: string, f: string, concurso: string, plano: string, ativos: boolean, p: number) {
+  async function buscar(query: string, f: string, concurso: string, plano: string, ativos: boolean, p: number, sort: boolean) {
     setLoading(true);
     const params = new URLSearchParams();
     if (query) params.set("q", query);
@@ -105,6 +106,7 @@ export default function AlunosClient({
     if (concurso) params.set("concurso", concurso);
     if (plano) params.set("planoTipo", plano);
     if (ativos) params.set("ativo", "true");
+    if (sort) params.set("ordenar", "metas_desc");
     params.set("page", String(p));
     const res = await fetch(`/api/alunos?${params}`);
     const data = await res.json();
@@ -116,28 +118,34 @@ export default function AlunosClient({
 
   function handleQ(v: string) {
     setQ(v);
-    buscar(v, filtro, concursoFiltro, planoFiltro, apenasAtivos, 0);
+    buscar(v, filtro, concursoFiltro, planoFiltro, apenasAtivos, 0, sortMetas);
   }
 
   function handleFiltro(v: string) {
     const next = filtro === v ? "" : v;
     setFiltro(next);
-    buscar(q, next, concursoFiltro, planoFiltro, apenasAtivos, 0);
+    buscar(q, next, concursoFiltro, planoFiltro, apenasAtivos, 0, sortMetas);
   }
 
   function handleConcurso(v: string) {
     setConcursoFiltro(v);
-    buscar(q, filtro, v, planoFiltro, apenasAtivos, 0);
+    buscar(q, filtro, v, planoFiltro, apenasAtivos, 0, sortMetas);
   }
 
   function handlePlano(v: string) {
     setPlanoFiltro(v);
-    buscar(q, filtro, concursoFiltro, v, apenasAtivos, 0);
+    buscar(q, filtro, concursoFiltro, v, apenasAtivos, 0, sortMetas);
   }
 
   function handleApenasAtivos(v: boolean) {
     setApenasAtivos(v);
-    buscar(q, filtro, concursoFiltro, planoFiltro, v, 0);
+    buscar(q, filtro, concursoFiltro, planoFiltro, v, 0, sortMetas);
+  }
+
+  function handleSortMetas() {
+    const next = !sortMetas;
+    setSortMetas(next);
+    buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, 0, next);
   }
 
   const totalPages = Math.ceil(total / pageSize);
@@ -247,7 +255,19 @@ export default function AlunosClient({
               <th className="text-left px-4 py-3">Taxa Acertos</th>
               <th className="text-left px-4 py-3">Disciplina baixa</th>
               <th className="text-left px-4 py-3">Assunto baixo</th>
-              <th className="text-left px-4 py-3">Metas</th>
+              <th className="text-left px-4 py-3">
+                <button
+                  onClick={handleSortMetas}
+                  className={`flex items-center gap-1 font-semibold uppercase tracking-wide transition ${sortMetas ? "text-orange-600" : "text-slate-500 hover:text-slate-700"}`}
+                  title={sortMetas ? "Ordenado: mais atrasados primeiro" : "Ordenar por atraso"}
+                >
+                  Metas
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d={sortMetas ? "M3 4h13M3 8h9M3 12h5m10 4l-4-4m0 0l-4 4m4-4v12" : "M3 4h13M3 8h9M3 12h5m10-1v9m0 0l-3-3m3 3l3-3"} />
+                  </svg>
+                </button>
+              </th>
               <th className="text-left px-4 py-3">Último contato</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -369,14 +389,14 @@ export default function AlunosClient({
         {totalPages > 1 && (
           <div className="flex gap-2">
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page - 1)}
+              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page - 1, sortMetas)}
               disabled={page === 0 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               ← Anterior
             </button>
             <button
-              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page + 1)}
+              onClick={() => buscar(q, filtro, concursoFiltro, planoFiltro, apenasAtivos, page + 1, sortMetas)}
               disabled={page >= totalPages - 1 || loading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >

@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   const planoTipo = searchParams.get("planoTipo") ?? "";
   const ativo = searchParams.get("ativo");
   const todos = searchParams.get("todos") === "true";
+  const ordenar = searchParams.get("ordenar") ?? "";
   const page = Math.max(0, parseInt(searchParams.get("page") ?? "0", 10));
 
   // Modo leve: retorna só id+nome de todos os alunos ativos (para selects)
@@ -59,6 +60,10 @@ export async function GET(req: NextRequest) {
   if (ativo === "true") where.ativo = true;
   else if (ativo === "false") where.ativo = false;
 
+  const orderBy = ordenar === "metas_desc"
+    ? [{ diasAtraso: "desc" as const }, { nome: "asc" as const }]
+    : [{ nome: "asc" as const }];
+
   const [alunos, total] = await Promise.all([
     prisma.aluno.findMany({
       where,
@@ -66,7 +71,7 @@ export async function GET(req: NextRequest) {
         disciplinas: { include: { assuntos: true } },
         contatos: { include: { user: true }, orderBy: { data: "desc" }, take: 1 },
       },
-      orderBy: { nome: "asc" },
+      orderBy,
       take: PAGE_SIZE,
       skip: page * PAGE_SIZE,
     }),
