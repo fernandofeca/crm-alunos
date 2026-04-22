@@ -40,20 +40,27 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 
 type FetchAlunosResult = { alunos: TutoryAluno[]; paginacaoDebug: string; primeiroAlunoKeys: string };
 
-async function fetchPeriodo(headers: Record<string, string>, extraBody: string): Promise<TutoryAluno[]> {
+async function fetchTutoryAlunos(headers: Record<string, string>): Promise<FetchAlunosResult> {
   const all: TutoryAluno[] = [];
   let pagina = 1;
+  let paginacaoDebug = "";
+  let primeiroAlunoKeys = "";
+
   while (true) {
     const res = await fetch("https://admin.tutory.com.br/intent/listar-alunos", {
       method: "POST",
       headers: { ...headers, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded" },
-      body: `pagina=${pagina}${extraBody ? "&" + extraBody : ""}`,
+      body: `pagina=${pagina}`,
     });
-    if (!res.ok) break;
+    if (!res.ok) { paginacaoDebug += `[p${pagina} HTTP ${res.status}]`; break; }
     const data = await res.json();
-    if (!data.result) break;
+    if (!data.result) { paginacaoDebug += `[p${pagina} result=false]`; break; }
     const alunos: TutoryAluno[] = data.data?.alunos ?? [];
-    if (alunos.length === 0) break;
+    if (alunos.length === 0) { paginacaoDebug += `[p${pagina} vazio]`; break; }
+    if (pagina === 1) {
+      primeiroAlunoKeys = Object.keys(alunos[0]).join(", ");
+      paginacaoDebug = `p1=${alunos.length} | pagination=${JSON.stringify(data.data?.pagination)}`;
+    }
     all.push(...alunos);
     const paginationObj = data.data?.pagination ?? {};
     const totalPaginas: number =
@@ -64,36 +71,6 @@ async function fetchPeriodo(headers: Record<string, string>, extraBody: string):
     if (pagina >= totalPaginas) break;
     pagina++;
   }
-  return all;
-}
-
-function mesAnterior(mesesAtras: number): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() - mesesAtras);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
-}
-
-async function fetchTutoryAlunos(headers: Record<string, string>): Promise<FetchAlunosResult> {
-  // Fetch current + last 5 months in parallel using common period params
-  const meses = [0, 1, 2, 3, 4, 5].map(mesAnterior);
-  const [semFiltro, ...porMes] = await Promise.all([
-    fetchPeriodo(headers, ""),
-    ...meses.map((mes) => fetchPeriodo(headers, `mes=${mes}`)),
-    ...meses.map((mes) => fetchPeriodo(headers, `periodo=${mes}`)),
-    ...meses.map((mes) => fetchPeriodo(headers, `data=${mes}`)),
-  ]);
-
-  // Merge all results, deduplicate by id
-  const map = new Map<number, TutoryAluno>();
-  for (const aluno of [...semFiltro, ...porMes.flat()]) {
-    map.set(aluno.id, aluno);
-  }
-  const all = [...map.values()];
-
-  const primeiroAlunoKeys = all[0] ? Object.keys(all[0]).join(", ") : "";
-  const paginacaoDebug = `semFiltro=${semFiltro.length} | porMes(${meses[0]})=${porMes[0]?.length ?? 0} | total dedup=${all.length}`;
 
   return { alunos: all, paginacaoDebug, primeiroAlunoKeys };
 }
