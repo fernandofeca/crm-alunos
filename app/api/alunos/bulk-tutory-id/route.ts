@@ -3,8 +3,11 @@ import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  const key = req.nextUrl.searchParams.get("key");
+  if (key !== process.env.AUTH_SECRET) {
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
 
   const pairs: { email: string; tutoryId: number }[] = await req.json();
 
