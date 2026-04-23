@@ -123,7 +123,24 @@ export async function POST(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
+  if (body.debug === true) return debugHtml();
   return processar(body.dry === true);
+}
+
+async function debugHtml() {
+  const cookie = await getSessionCookie();
+  if (!cookie) return NextResponse.json({ error: "Sem credenciais Tutory" }, { status: 500 });
+  const html = await fetch("https://admin.tutory.com.br/alunos/engajamento?p=1&m=100&t=7", { headers: { Cookie: cookie } }).then((r) => r.text());
+  const stripTags = (s: string) => s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  // Return first 3 rows with email and their stripped text
+  const rows = html.split(/<tr[^>]*>/i).slice(1);
+  const amostra = rows
+    .filter((r) => /mailto:/i.test(r))
+    .slice(0, 3)
+    .map((r) => ({ raw: r.slice(0, 500), texto: stripTags(r).slice(0, 300) }));
+  // Also try pattern 2
+  const blocks = html.split('class="student-list-item"').slice(1, 4).map((b) => ({ raw: b.slice(0, 500), texto: stripTags(b).slice(0, 300) }));
+  return NextResponse.json({ pattern1: amostra, pattern2: blocks });
 }
 
 async function processar(dry = false) {
