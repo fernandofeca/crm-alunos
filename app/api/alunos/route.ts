@@ -13,7 +13,9 @@ export async function GET(req: NextRequest) {
   const filtroParam = searchParams.get("filtro") ?? "";
   const filtros = filtroParam ? filtroParam.split(",").filter(Boolean) : [];
   const concurso = searchParams.get("concurso") ?? "";
-  const planoTipo = searchParams.get("planoTipo") ?? "";
+  const planoTipoParam = searchParams.get("planoTipo") ?? "";
+  const planoTipo = planoTipoParam; // kept for compat
+  const planoTipos = planoTipoParam ? planoTipoParam.split(",").filter(Boolean) : [];
   const ativo = searchParams.get("ativo");
   const todos = searchParams.get("todos") === "true";
   const ordenar = searchParams.get("ordenar") ?? "";
@@ -65,7 +67,8 @@ export async function GET(req: NextRequest) {
   }
 
   if (concurso) where.concurso = concurso;
-  if (planoTipo) where.planoTipo = planoTipo;
+  if (planoTipos.length === 1) where.planoTipo = planoTipos[0];
+  else if (planoTipos.length > 1) where.planoTipo = { in: planoTipos };
   if (ativo === "true") where.ativo = true;
   else if (ativo === "false") where.ativo = false;
 

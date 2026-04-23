@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -86,13 +86,15 @@ export default function AlunosClient({
   const searchParams = useSearchParams();
   const filtroInicial = searchParams.get("filtro") ?? "";
   const filtrosIniciais = filtroInicial ? filtroInicial.split(",").filter(Boolean) : [];
-  const planoInicial = searchParams.get("planoTipo") ?? "";
+  const planoInicial = searchParams.get("planoTipo") ? searchParams.get("planoTipo")!.split(",").filter(Boolean) : [];
 
   const [alunos, setAlunos] = useState<Aluno[]>(initialAlunos);
   const [q, setQ] = useState("");
   const [filtros, setFiltros] = useState<string[]>(filtrosIniciais);
   const [concursoFiltro, setConcursoFiltro] = useState("");
-  const [planoFiltro, setPlanoFiltro] = useState(planoInicial);
+  const [planoFiltro, setPlanoFiltro] = useState<string[]>(planoInicial);
+  const [planoDropdownOpen, setPlanoDropdownOpen] = useState(false);
+  const planoDropdownRef = useRef<HTMLDivElement>(null);
   const [apenasAtivos, setApenasAtivos] = useState(true);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
@@ -102,7 +104,17 @@ export default function AlunosClient({
 
   useEffect(() => {
     buscar("", filtrosIniciais, "", planoInicial, true, 0, null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (planoDropdownRef.current && !planoDropdownRef.current.contains(e.target as Node)) {
+        setPlanoDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   function sortToParam(s: { field: SortField; dir: SortDir } | null): string {
@@ -116,13 +128,13 @@ export default function AlunosClient({
     return "";
   }
 
-  async function buscar(query: string, f: string[], concurso: string, plano: string, ativos: boolean, p: number, s: typeof sort) {
+  async function buscar(query: string, f: string[], concurso: string, planos: string[], ativos: boolean, p: number, s: typeof sort) {
     setLoading(true);
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (f.length > 0) params.set("filtro", f.join(","));
     if (concurso) params.set("concurso", concurso);
-    if (plano) params.set("planoTipo", plano);
+    if (planos.length > 0) params.set("planoTipo", planos.join(","));
     if (ativos) params.set("ativo", "true");
     const ord = sortToParam(s);
     if (ord) params.set("ordenar", ord);
@@ -153,9 +165,12 @@ export default function AlunosClient({
     buscar(q, filtros, v, planoFiltro, apenasAtivos, 0, sort);
   }
 
-  function handlePlano(v: string) {
-    setPlanoFiltro(v);
-    buscar(q, filtros, concursoFiltro, v, apenasAtivos, 0, sort);
+  function handlePlanoToggle(v: string) {
+    const next = planoFiltro.includes(v)
+      ? planoFiltro.filter((p) => p !== v)
+      : [...planoFiltro, v];
+    setPlanoFiltro(next);
+    buscar(q, filtros, concursoFiltro, next, apenasAtivos, 0, sort);
   }
 
   function handleApenasAtivos(v: boolean) {
@@ -223,16 +238,46 @@ export default function AlunosClient({
               ))}
             </select>
           )}
-          <select
-            value={planoFiltro}
-            onChange={(e) => handlePlano(e.target.value)}
-            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          >
-            <option value="">Todos os planos</option>
-            {PLANOS.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
+          <div className="relative" ref={planoDropdownRef}>
+            <button
+              onClick={() => setPlanoDropdownOpen((o) => !o)}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center gap-2 min-w-44"
+            >
+              <span className="flex-1 text-left text-slate-700">
+                {planoFiltro.length === 0 ? "Todos os planos" : planoFiltro.length === 1 ? planoFiltro[0] : `${planoFiltro.length} planos`}
+              </span>
+              <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {planoDropdownOpen && (
+              <div className="absolute z-20 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+                {PLANOS.map((p) => (
+                  <label key={p} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={planoFiltro.includes(p)}
+                      onChange={() => handlePlanoToggle(p)}
+                      className="accent-blue-600"
+                    />
+                    {p}
+                  </label>
+                ))}
+                {planoFiltro.length > 0 && (
+                  <>
+                    <div className="border-t border-slate-100 mt-1 pt-1">
+                      <button
+                        onClick={() => { setPlanoFiltro([]); buscar(q, filtros, concursoFiltro, [], apenasAtivos, 0, sort); }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+                      >
+                        Limpar seleção
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => handleFiltro("novos")}
             className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
@@ -298,6 +343,7 @@ export default function AlunosClient({
         <table className="w-full text-sm min-w-[1000px]">
           <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
             <tr>
+              <th className="text-left px-4 py-3 text-slate-400 font-semibold uppercase text-xs w-10">#</th>
               <th className="text-left px-4 py-3"><SortBtn field="nome" defaultDir="asc" label="Aluno" /></th>
               <th className="text-left px-4 py-3"><SortBtn field="concurso" defaultDir="asc" label="Concurso" /></th>
               <th className="text-left px-4 py-3"><SortBtn field="dataInicio" defaultDir="desc" label="Data Início" /></th>
@@ -311,12 +357,13 @@ export default function AlunosClient({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {alunos.map((a) => {
+            {alunos.map((a, idx) => {
               const disc = disciplinaMaisBaixa(a.disciplinas);
               const assunto = assuntoMaisBaixo(a.disciplinas);
               const ultimoContato = a.contatos[0];
               return (
                 <tr key={a.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 text-slate-400 text-xs font-mono select-none">{page * pageSize + idx + 1}</td>
                   <td className="px-4 py-3">
                     {a.tutoryId ? (
                       <a
@@ -425,7 +472,7 @@ export default function AlunosClient({
             })}
             {alunos.length === 0 && !loading && (
               <tr>
-                <td colSpan={10} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={11} className="px-4 py-10 text-center text-slate-400">
                   Nenhum aluno encontrado
                 </td>
               </tr>
