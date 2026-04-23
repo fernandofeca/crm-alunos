@@ -14,9 +14,12 @@ async function getSessionCookie(): Promise<string> {
 }
 
 function parseHoras(texto: string): number {
-  // "14h 30min" | "14h30m" | "14:30" | "14h" | "14.5"
+  // "14h 30min" | "14h30m" | "14:30" | "14h" | "23,0h" | "14.5h"
   const hMin = texto.match(/(\d+)\s*h\s*(\d+)/);
   if (hMin) return parseInt(hMin[1]) + parseInt(hMin[2]) / 60;
+  // Brazilian decimal: "23,0h" or "14.5h" — must check before hSo to avoid matching "0h"
+  const decimal = texto.match(/(\d+)[,.](\d+)\s*h/i);
+  if (decimal) return parseInt(decimal[1]) + parseInt(decimal[2]) / Math.pow(10, decimal[2].length);
   const hSo = texto.match(/(\d+)\s*h/);
   if (hSo) return parseInt(hSo[1]);
   const hmm = texto.match(/(\d+):(\d+)/);
