@@ -26,6 +26,7 @@ type Aluno = {
   assuntoMaisBaixoNome: string;
   assuntoMaisBaixoNota: number;
   diasAtraso: number;
+  tutoryId: number | null;
   disciplinas: Disciplina[];
   contatos: Contato[];
 };
@@ -142,6 +143,8 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
   const [dataContato, setDataContato] = useState(() => new Date().toISOString().slice(0, 10));
   const [savingContato, setSavingContato] = useState(false);
   const [savingAtivo, setSavingAtivo] = useState(false);
+  const [editandoTutoryId, setEditandoTutoryId] = useState(false);
+  const [tutoryIdInput, setTutoryIdInput] = useState("");
   const [editandoDados, setEditandoDados] = useState(false);
   const [dadosForm, setDadosForm] = useState({ nome: "", email: "", cpf: "", whatsapp: "", concurso: "" });
   const [savingDados, setSavingDados] = useState(false);
@@ -286,6 +289,46 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
                   {aluno.concurso}
                 </span>
               )}
+              {/* ID Tutory */}
+              <div className="mt-2 flex items-center gap-2">
+                {editandoTutoryId ? (
+                  <form className="flex items-center gap-1" onSubmit={async (e) => {
+                    e.preventDefault();
+                    await patchAluno({ tutoryId: tutoryIdInput ? Number(tutoryIdInput) : null } as Partial<Aluno>);
+                    setEditandoTutoryId(false);
+                  }}>
+                    <input
+                      autoFocus
+                      type="number"
+                      value={tutoryIdInput}
+                      onChange={e => setTutoryIdInput(e.target.value)}
+                      placeholder="ID Tutory"
+                      className="border border-slate-300 rounded px-2 py-0.5 text-xs w-28 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button type="submit" className="text-xs text-blue-600 hover:underline">Salvar</button>
+                    <button type="button" onClick={() => setEditandoTutoryId(false)} className="text-xs text-slate-400 hover:underline">Cancelar</button>
+                  </form>
+                ) : aluno.tutoryId ? (
+                  <a
+                    href={`https://admin.tutory.com.br/alunos/index?aid=${aluno.tutoryId}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    Ver no Tutory #{aluno.tutoryId}
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => { setTutoryIdInput(""); setEditandoTutoryId(true); }}
+                    className="text-xs text-slate-400 hover:text-blue-600 hover:underline"
+                  >
+                    + Vincular ID Tutory
+                  </button>
+                )}
+                {aluno.tutoryId && !editandoTutoryId && (
+                  <button onClick={() => { setTutoryIdInput(String(aluno.tutoryId ?? "")); setEditandoTutoryId(true); }}
+                    className="text-xs text-slate-300 hover:text-slate-500">✏️</button>
+                )}
+              </div>
             </div>
             <a href={whatsappUrl(aluno.whatsapp)} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-full transition self-start">

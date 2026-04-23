@@ -68,6 +68,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.planoVencimento !== undefined) campos.planoVencimento = body.planoVencimento ? new Date(body.planoVencimento) : null;
   if (body.dataInicio !== undefined) campos.dataInicio = body.dataInicio ? new Date(body.dataInicio) : null;
   if (body.acompanharDePerto !== undefined) campos.acompanharDePerto = body.acompanharDePerto;
+  if (body.tutoryId !== undefined) campos.tutoryId = body.tutoryId ? Number(body.tutoryId) : null;
 
   const aluno = await prisma.aluno.update({ where: { id }, data: campos });
   return NextResponse.json(aluno);
