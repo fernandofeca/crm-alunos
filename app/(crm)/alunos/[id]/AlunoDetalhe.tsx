@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 type Assunto = { id: string; nome: string; nota: number };
 type Disciplina = { id: string; nome: string; nota: number; assuntos: Assunto[] };
 type Contato = { id: string; data: string; tipo: string; obs: string; user: { name: string } };
+type Conquista = { id: string; tipo: string; semana: string; horas: number };
 type Aluno = {
   id: string;
   nome: string;
@@ -29,6 +30,7 @@ type Aluno = {
   tutoryId: number | null;
   disciplinas: Disciplina[];
   contatos: Contato[];
+  conquistas: Conquista[];
 };
 
 function taxaCor(taxa: number) {
@@ -589,6 +591,33 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
               </div>
             )}
           </div>
+        </div>
+
+        {/* Conquistas */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">🏆</span>
+            <h2 className="text-base font-semibold text-slate-700">Conquistas</h2>
+            <span className="ml-auto text-xs text-slate-400 font-medium">{aluno.conquistas.length} selo{aluno.conquistas.length !== 1 ? "s" : ""}</span>
+          </div>
+          {aluno.conquistas.length === 0 ? (
+            <p className="text-sm text-slate-400">Nenhuma conquista registrada ainda.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {aluno.conquistas.map((c) => (
+                <div
+                  key={c.id}
+                  title={`${c.horas.toFixed(1)}h estudadas`}
+                  className="flex flex-col items-center gap-1 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-center"
+                >
+                  <span className="text-2xl">🏆</span>
+                  <span className="text-xs font-semibold text-amber-700">Engajamento</span>
+                  <span className="text-xs text-amber-600">{new Date(c.semana).toLocaleDateString("pt-BR")}</span>
+                  <span className="text-xs text-slate-500">{c.horas.toFixed(1)}h</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

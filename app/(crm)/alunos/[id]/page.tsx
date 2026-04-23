@@ -11,6 +11,7 @@ export default async function AlunoPage({ params }: { params: Promise<{ id: stri
     include: {
       disciplinas: { include: { assuntos: true } },
       contatos: { include: { user: true }, orderBy: { data: "desc" } },
+      conquistas: { orderBy: { semana: "desc" } },
     },
   });
 

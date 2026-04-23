@@ -50,6 +50,7 @@ model Aluno {
   contatos         Contato[]
   tarefas          Tarefa[]
   eventos          Evento[]
+  conquistas       Conquista[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 }
@@ -111,4 +112,16 @@ model Evento {
   userId      String
   user        User     @relation(fields: [userId], references: [id])
   createdAt   DateTime @default(now())
+}
+
+model Conquista {
+  id        String   @id @default(cuid())
+  alunoId   String
+  aluno     Aluno    @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  tipo      String
+  semana    DateTime
+  horas     Float    @default(0)
+  criadoEm  DateTime @default(now())
+
+  @@unique([alunoId, tipo, semana])
 }

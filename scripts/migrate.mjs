@@ -27,6 +27,7 @@ const migrations = [
   "../prisma/migrations/20260422000006_aluno_acompanhar_data_inicio/migration.sql",
   "../prisma/migrations/20260422000007_aluno_tutory_id/migration.sql",
   "../prisma/migrations/20260422000008_aluno_ultimo_contato/migration.sql",
+  "../prisma/migrations/20260423000000_conquistas/migration.sql",
 ];
 
 for (const file of migrations) {
