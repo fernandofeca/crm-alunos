@@ -3,12 +3,15 @@ import AlunosEngajadosClient from "./AlunosEngajadosClient";
 
 export const dynamic = "force-dynamic";
 
+// First Friday with data: 17/04/2026
+const INICIO_DADOS = new Date(Date.UTC(2026, 3, 17));
+
 function sextasDoMes(ano: number, mes: number): Date[] {
   const sextas: Date[] = [];
   const d = new Date(Date.UTC(ano, mes - 1, 1));
   while (d.getUTCDay() !== 5) d.setUTCDate(d.getUTCDate() + 1);
   while (d.getUTCMonth() === mes - 1) {
-    sextas.push(new Date(d));
+    if (d >= INICIO_DADOS) sextas.push(new Date(d));
     d.setUTCDate(d.getUTCDate() + 7);
   }
   return sextas;
