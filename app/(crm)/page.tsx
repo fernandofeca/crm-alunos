@@ -20,6 +20,7 @@ export default async function DashboardPage() {
     metas5d,
     metas6d,
     metas7d,
+    planosCounts,
   ] = await Promise.all([
     prisma.aluno.count({ where: { ativo: true } }),
     prisma.aluno.count({ where: { ativo: true, taxaAcertos: { gt: 0, lt: 60 } } }),
@@ -33,6 +34,7 @@ export default async function DashboardPage() {
     prisma.aluno.count({ where: { ativo: true, diasAtraso: 5 } }),
     prisma.aluno.count({ where: { ativo: true, diasAtraso: 6 } }),
     prisma.aluno.count({ where: { ativo: true, diasAtraso: 7 } }),
+    prisma.aluno.groupBy({ by: ["planoTipo"], where: { ativo: true }, _count: { id: true } }),
   ]);
 
   const atencao = await prisma.aluno.findMany({
@@ -43,6 +45,17 @@ export default async function DashboardPage() {
     orderBy: { diasAtraso: "desc" },
     take: 10,
   });
+
+  const planosConfig = [
+    { label: "Mentoria da Posse", color: "bg-purple-50 text-purple-700", border: "border-purple-200" },
+    { label: "Mentoria Diamante", color: "bg-sky-50 text-sky-700", border: "border-sky-200" },
+    { label: "Cronograma Ouro", color: "bg-amber-50 text-amber-700", border: "border-amber-200" },
+    { label: "Cronograma Outros", color: "bg-teal-50 text-teal-700", border: "border-teal-200" },
+  ].map((p) => ({
+    ...p,
+    value: planosCounts.find((c) => c.planoTipo === p.label)?._count.id ?? 0,
+    href: `/alunos?planoTipo=${encodeURIComponent(p.label)}`,
+  }));
 
   const cardsResumo = [
     { label: "Total de Alunos", value: total, color: "bg-blue-50 text-blue-700", border: "border-blue-200", href: "/alunos" },
@@ -76,6 +89,18 @@ export default async function DashboardPage() {
             <p className="text-sm mt-1 font-medium opacity-80">{c.label}</p>
           </Link>
         ))}
+      </div>
+
+      <div>
+        <h2 className="text-base font-semibold text-slate-700 mb-3">Tipos de Plano (ativos)</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {planosConfig.map((c) => (
+            <Link key={c.label} href={c.href} className={`rounded-xl border p-5 ${c.color} ${c.border} hover:opacity-80 transition cursor-pointer block`}>
+              <p className="text-3xl font-bold">{c.value}</p>
+              <p className="text-sm mt-1 font-medium opacity-80">{c.label}</p>
+            </Link>
+          ))}
+        </div>
       </div>
 
       <div>
