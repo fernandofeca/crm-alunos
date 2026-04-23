@@ -229,6 +229,14 @@ export async function POST() {
         if (!existente && cpf.length === 11 && !cpf.startsWith("000")) {
           existente = await prisma.aluno.findFirst({ where: { cpf } }) ?? null;
         }
+        // Fallback: match by normalized name (remove accents, lowercase, collapse spaces)
+        if (!existente && nome && nome !== "Sem nome") {
+          const normalizar = (s: string) =>
+            s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+          const nomeNorm = normalizar(nome);
+          const candidatos = await prisma.aluno.findMany({ where: { tutoryId: null } });
+          existente = candidatos.find((c) => normalizar(c.nome) === nomeNorm) ?? null;
+        }
 
         if (existente) {
           await prisma.aluno.update({
