@@ -19,6 +19,9 @@ export default function Navbar() {
           <Link href="/alunos" className="text-slate-600 hover:text-blue-600 transition">
             Alunos
           </Link>
+          <Link href="/alunos-engajados" className="text-slate-600 hover:text-blue-600 transition">
+            Alunos Engajados
+          </Link>
           <Link href="/agenda" className="text-slate-600 hover:text-blue-600 transition">
             Agenda
           </Link>
