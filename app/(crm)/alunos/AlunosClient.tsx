@@ -35,7 +35,7 @@ type Aluno = {
   contatos: Contato[];
 };
 
-type SortField = "metas" | "taxa" | "dataInicio";
+type SortField = "metas" | "taxa" | "dataInicio" | "nome" | "concurso" | "ultimoContato";
 type SortDir = "asc" | "desc";
 
 const METAS_FILTROS = [
@@ -109,6 +109,9 @@ export default function AlunosClient({
     if (s.field === "metas") return "metas_desc";
     if (s.field === "taxa") return s.dir === "desc" ? "taxa_desc" : "taxa_asc";
     if (s.field === "dataInicio") return s.dir === "desc" ? "inicio_desc" : "inicio_asc";
+    if (s.field === "nome") return s.dir === "asc" ? "nome_asc" : "nome_desc";
+    if (s.field === "concurso") return s.dir === "asc" ? "concurso_asc" : "concurso_desc";
+    if (s.field === "ultimoContato") return s.dir === "desc" ? "contato_desc" : "contato_asc";
     return "";
   }
 
@@ -294,15 +297,15 @@ export default function AlunosClient({
         <table className="w-full text-sm min-w-[1000px]">
           <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
             <tr>
-              <th className="text-left px-4 py-3">Aluno</th>
-              <th className="text-left px-4 py-3">Concurso</th>
+              <th className="text-left px-4 py-3"><SortBtn field="nome" defaultDir="asc" label="Aluno" /></th>
+              <th className="text-left px-4 py-3"><SortBtn field="concurso" defaultDir="asc" label="Concurso" /></th>
               <th className="text-left px-4 py-3"><SortBtn field="dataInicio" defaultDir="desc" label="Data Início" /></th>
               <th className="text-left px-4 py-3">WhatsApp</th>
               <th className="text-left px-4 py-3"><SortBtn field="taxa" defaultDir="desc" label="Taxa Acertos" /></th>
               <th className="text-left px-4 py-3">Disciplina baixa</th>
               <th className="text-left px-4 py-3">Assunto baixo</th>
               <th className="text-left px-4 py-3"><SortBtn field="metas" defaultDir="desc" label="Metas" /></th>
-              <th className="text-left px-4 py-3">Último contato</th>
+              <th className="text-left px-4 py-3"><SortBtn field="ultimoContato" defaultDir="desc" label="Último contato" /></th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
