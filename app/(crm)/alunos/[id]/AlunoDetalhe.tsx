@@ -332,7 +332,16 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
                 )}
               </div>
             </div>
-            <div className="flex flex-col items-end gap-2 self-start">
+            <div className="flex items-center gap-4 self-start">
+              <label className="flex items-center gap-2 cursor-pointer select-none bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={aluno.acompanharDePerto}
+                  onChange={(e) => patchAluno({ acompanharDePerto: e.target.checked } as Partial<Aluno>)}
+                  className="w-4 h-4 accent-orange-500 cursor-pointer"
+                />
+                <span className="text-sm font-medium text-orange-700">Acompanhar de Perto</span>
+              </label>
               <a href={whatsappUrl(aluno.whatsapp)} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-full transition">
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -340,15 +349,6 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
                 </svg>
                 {aluno.whatsapp}
               </a>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={aluno.acompanharDePerto}
-                  onChange={(e) => patchAluno({ acompanharDePerto: e.target.checked } as Partial<Aluno>)}
-                  className="w-4 h-4 accent-orange-500 cursor-pointer"
-                />
-                <span className="text-sm font-medium text-slate-600">Acompanhar de Perto</span>
-              </label>
             </div>
           </div>
         )}
