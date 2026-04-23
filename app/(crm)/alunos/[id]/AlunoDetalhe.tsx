@@ -486,33 +486,28 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h2 className="text-base font-semibold text-slate-700 mb-4">Disciplinas e Assuntos</h2>
-          {aluno.disciplinas.length === 0 ? (
-            <p className="text-sm text-slate-400">Nenhuma disciplina cadastrada</p>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Conquistas */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">🏆</span>
+            <h2 className="text-base font-semibold text-slate-700">Conquistas</h2>
+            <span className="ml-auto text-xs text-slate-400 font-medium">{aluno.conquistas.length} selo{aluno.conquistas.length !== 1 ? "s" : ""}</span>
+          </div>
+          {aluno.conquistas.length === 0 ? (
+            <p className="text-sm text-slate-400">Nenhuma conquista registrada ainda.</p>
           ) : (
-            <div className="space-y-4">
-              {aluno.disciplinas.map((d) => (
-                <div key={d.id}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-700">{d.nome}</span>
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${notaBadge(d.nota)}`}>
-                      {d.nota.toFixed(1)}
-                    </span>
-                  </div>
-                  {d.assuntos.length > 0 && (
-                    <div className="pl-3 space-y-1">
-                      {d.assuntos.map((a) => (
-                        <div key={a.id} className="flex items-center justify-between">
-                          <span className="text-xs text-slate-500">{a.nome}</span>
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${notaBadge(a.nota)}`}>
-                            {a.nota.toFixed(1)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+            <div className="flex flex-wrap gap-2">
+              {aluno.conquistas.map((c) => (
+                <div
+                  key={c.id}
+                  title={`${c.horas.toFixed(1)}h estudadas`}
+                  className="flex flex-col items-center gap-1 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-center"
+                >
+                  <span className="text-2xl">🏆</span>
+                  <span className="text-xs font-semibold text-amber-700">Engajamento</span>
+                  <span className="text-xs text-amber-600">{new Date(c.semana).toLocaleDateString("pt-BR")}</span>
+                  <span className="text-xs text-slate-500">{c.horas.toFixed(1)}h</span>
                 </div>
               ))}
             </div>
@@ -593,27 +588,33 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
           </div>
         </div>
 
-        {/* Conquistas */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">🏆</span>
-            <h2 className="text-base font-semibold text-slate-700">Conquistas</h2>
-            <span className="ml-auto text-xs text-slate-400 font-medium">{aluno.conquistas.length} selo{aluno.conquistas.length !== 1 ? "s" : ""}</span>
-          </div>
-          {aluno.conquistas.length === 0 ? (
-            <p className="text-sm text-slate-400">Nenhuma conquista registrada ainda.</p>
+        {/* Disciplinas e Assuntos */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="text-base font-semibold text-slate-700 mb-4">Disciplinas e Assuntos</h2>
+          {aluno.disciplinas.length === 0 ? (
+            <p className="text-sm text-slate-400">Nenhuma disciplina cadastrada</p>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {aluno.conquistas.map((c) => (
-                <div
-                  key={c.id}
-                  title={`${c.horas.toFixed(1)}h estudadas`}
-                  className="flex flex-col items-center gap-1 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-center"
-                >
-                  <span className="text-2xl">🏆</span>
-                  <span className="text-xs font-semibold text-amber-700">Engajamento</span>
-                  <span className="text-xs text-amber-600">{new Date(c.semana).toLocaleDateString("pt-BR")}</span>
-                  <span className="text-xs text-slate-500">{c.horas.toFixed(1)}h</span>
+            <div className="space-y-4">
+              {aluno.disciplinas.map((d) => (
+                <div key={d.id}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-slate-700">{d.nome}</span>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${notaBadge(d.nota)}`}>
+                      {d.nota.toFixed(1)}
+                    </span>
+                  </div>
+                  {d.assuntos.length > 0 && (
+                    <div className="pl-3 space-y-1">
+                      {d.assuntos.map((a) => (
+                        <div key={a.id} className="flex items-center justify-between">
+                          <span className="text-xs text-slate-500">{a.nome}</span>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${notaBadge(a.nota)}`}>
+                            {a.nota.toFixed(1)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
