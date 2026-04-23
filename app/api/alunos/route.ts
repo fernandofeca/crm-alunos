@@ -79,8 +79,10 @@ export async function GET(req: NextRequest) {
     ordenar === "nome_desc"      ? [{ nome: "desc" as const }] :
     ordenar === "concurso_asc"   ? [{ concurso: "asc" as const }, { nome: "asc" as const }] :
     ordenar === "concurso_desc"  ? [{ concurso: "desc" as const }, { nome: "asc" as const }] :
-    ordenar === "contato_desc"   ? [{ contatos: { _max: { data: "desc" as const } } }, { nome: "asc" as const }] :
-    ordenar === "contato_asc"    ? [{ contatos: { _max: { data: "asc" as const } } }, { nome: "asc" as const }] :
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ordenar === "contato_desc"   ? [{ contatos: { _max: { data: "desc" } } } as any, { nome: "asc" as const }] :
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ordenar === "contato_asc"    ? [{ contatos: { _max: { data: "asc" } } } as any, { nome: "asc" as const }] :
     [{ nome: "asc" as const }];
 
   const [alunos, total] = await Promise.all([
