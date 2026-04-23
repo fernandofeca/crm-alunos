@@ -65,7 +65,8 @@ async function scrapeEngajamento(cookie: string): Promise<{ email: string; horas
     for (const row of rowsTable) {
       const emailMatch = row.match(/href=['"]mailto:([^'"]+)['"]/i);
       if (!emailMatch) continue;
-      const horasMatch = row.match(/(\d+h?\s*\d*\s*(?:min|m)?|\d+:\d+|\d+[,.]\d+)\s*(?:h|hora|hr)?/i);
+      // Require explicit 'h' or colon to avoid matching bare numbers (IDs, row counts, etc.)
+      const horasMatch = row.match(/(\d+[,.]\d+\s*h|\d+h(?:\s*\d+\s*(?:min|m)?)?|\d+:\d+)/i);
       if (!horasMatch) continue;
       const horas = parseHoras(horasMatch[1]);
       if (horas > 0) {
@@ -82,7 +83,7 @@ async function scrapeEngajamento(cookie: string): Promise<{ email: string; horas
         if (!searchMatch) continue;
         const parts = searchMatch[1].trim().split(" ");
         const email = parts[parts.length - 1].toLowerCase();
-        const horasMatch = block.match(/(\d+h?\s*\d*\s*(?:min|m)?|\d+:\d+|\d+[,.]\d+)/i);
+        const horasMatch = block.match(/(\d+[,.]\d+\s*h|\d+h(?:\s*\d+\s*(?:min|m)?)?|\d+:\d+)/i);
         if (!horasMatch) continue;
         const horas = parseHoras(horasMatch[1]);
         if (horas > 0) {
