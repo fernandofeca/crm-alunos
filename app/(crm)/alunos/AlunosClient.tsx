@@ -103,6 +103,11 @@ export default function AlunosClient({
   const [total, setTotal] = useState(totalInicial);
   const [sort, setSort] = useState<{ field: SortField; dir: SortDir } | null>(null);
   const pageSize = 50;
+  const [contatoModal, setContatoModal] = useState<{ alunoId: string; alunoNome: string } | null>(null);
+  const [tipoContato, setTipoContato] = useState<"equipe" | "mentor">("equipe");
+  const [dataContato, setDataContato] = useState(new Date().toISOString().slice(0, 10));
+  const [obsContato, setObsContato] = useState("");
+  const [savingContato, setSavingContato] = useState(false);
 
   useEffect(() => {
     buscar("", filtrosIniciais, [], planoInicial, true, 0, null);
@@ -207,6 +212,21 @@ export default function AlunosClient({
     }
     setSort(next);
     buscar(q, filtros, concursoFiltro, planoFiltro, apenasAtivos, 0, next);
+  }
+
+  async function handleRegistrarContato(e: React.FormEvent) {
+    e.preventDefault();
+    if (!contatoModal) return;
+    setSavingContato(true);
+    await fetch(`/api/alunos/${contatoModal.alunoId}/contatos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: tipoContato, data: dataContato, obs: obsContato }),
+    });
+    setSavingContato(false);
+    setContatoModal(null);
+    setObsContato("");
+    buscar(q, filtros, concursoFiltro, planoFiltro, apenasAtivos, page, sort);
   }
 
   const totalPages = Math.ceil(total / pageSize);
@@ -404,8 +424,6 @@ export default function AlunosClient({
               <th className="text-left px-4 py-3"><SortBtn field="dataInicio" defaultDir="desc" label="Data Início" /></th>
               <th className="text-left px-4 py-3">WhatsApp</th>
               <th className="text-left px-4 py-3"><SortBtn field="taxa" defaultDir="desc" label="Taxa Acertos" /></th>
-              <th className="text-left px-4 py-3">Disciplina baixa</th>
-              <th className="text-left px-4 py-3">Assunto baixo</th>
               <th className="text-left px-4 py-3"><SortBtn field="metas" defaultDir="desc" label="Metas" /></th>
               <th className="text-left px-4 py-3"><SortBtn field="ultimoContato" defaultDir="desc" label="Último contato" /></th>
               <th className="px-4 py-3"></th>
@@ -413,8 +431,6 @@ export default function AlunosClient({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {alunos.map((a, idx) => {
-              const disc = disciplinaMaisBaixa(a.disciplinas);
-              const assunto = assuntoMaisBaixo(a.disciplinas);
               const ultimoContato = a.contatos[0];
               return (
                 <tr key={a.id} className="hover:bg-slate-50">
@@ -474,26 +490,6 @@ export default function AlunosClient({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {disc ? (
-                      <span className="text-slate-600">
-                        {disc.nome}{" "}
-                        <span className={`font-semibold ${disc.nota < 6 ? "text-red-500" : ""}`}>
-                          ({disc.nota.toFixed(1)})
-                        </span>
-                      </span>
-                    ) : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {assunto ? (
-                      <span className="text-slate-600">
-                        {assunto.nome}{" "}
-                        <span className={`font-semibold ${assunto.nota < 6 ? "text-red-500" : ""}`}>
-                          ({assunto.nota.toFixed(1)})
-                        </span>
-                      </span>
-                    ) : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-4 py-3">
                     {a.diasAtraso > 0 ? (
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -518,16 +514,24 @@ export default function AlunosClient({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <Link href={`/alunos/${a.id}`} className="text-blue-600 hover:underline text-xs whitespace-nowrap">
-                      Ver perfil
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setContatoModal({ alunoId: a.id, alunoNome: a.nome }); setDataContato(new Date().toISOString().slice(0, 10)); setObsContato(""); setTipoContato("equipe"); }}
+                        className="text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded-lg transition whitespace-nowrap"
+                      >
+                        + Contato
+                      </button>
+                      <Link href={`/alunos/${a.id}`} className="text-blue-600 hover:underline text-xs whitespace-nowrap">
+                        Ver perfil
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               );
             })}
             {alunos.length === 0 && !loading && (
               <tr>
-                <td colSpan={11} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={9} className="px-4 py-10 text-center text-slate-400">
                   Nenhum aluno encontrado
                 </td>
               </tr>
@@ -559,6 +563,41 @@ export default function AlunosClient({
           </div>
         )}
       </div>
+
+      {/* Modal Registrar Contato */}
+      {contatoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setContatoModal(null)}>
+          <div className="bg-white rounded-xl border border-slate-200 p-6 w-full max-w-sm shadow-xl space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-700">Registrar Contato</h2>
+              <button onClick={() => setContatoModal(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
+            </div>
+            <p className="text-sm text-slate-500 -mt-2">{contatoModal.alunoNome}</p>
+            <form onSubmit={handleRegistrarContato} className="space-y-3">
+              <div className="flex gap-2">
+                {(["equipe", "mentor"] as const).map((t) => (
+                  <button key={t} type="button" onClick={() => setTipoContato(t)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition capitalize ${tipoContato === t ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">Data do contato</label>
+                <input type="date" value={dataContato} onChange={(e) => setDataContato(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <textarea value={obsContato} onChange={(e) => setObsContato(e.target.value)}
+                placeholder="Observações (opcional)..." rows={3}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+              <button type="submit" disabled={savingContato}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2 rounded-lg transition disabled:opacity-50">
+                {savingContato ? "Registrando..." : "Registrar contato"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
