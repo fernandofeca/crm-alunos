@@ -86,12 +86,13 @@ export default function AlunosClient({
   const searchParams = useSearchParams();
   const filtroInicial = searchParams.get("filtro") ?? "";
   const filtrosIniciais = filtroInicial ? filtroInicial.split(",").filter(Boolean) : [];
+  const planoInicial = searchParams.get("planoTipo") ?? "";
 
   const [alunos, setAlunos] = useState<Aluno[]>(initialAlunos);
   const [q, setQ] = useState("");
   const [filtros, setFiltros] = useState<string[]>(filtrosIniciais);
   const [concursoFiltro, setConcursoFiltro] = useState("");
-  const [planoFiltro, setPlanoFiltro] = useState("");
+  const [planoFiltro, setPlanoFiltro] = useState(planoInicial);
   const [apenasAtivos, setApenasAtivos] = useState(true);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
@@ -100,7 +101,7 @@ export default function AlunosClient({
   const pageSize = 50;
 
   useEffect(() => {
-    buscar("", filtrosIniciais, "", "", true, 0, null);
+    buscar("", filtrosIniciais, "", planoInicial, true, 0, null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
