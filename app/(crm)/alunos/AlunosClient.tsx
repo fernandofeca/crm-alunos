@@ -91,7 +91,9 @@ export default function AlunosClient({
   const [alunos, setAlunos] = useState<Aluno[]>(initialAlunos);
   const [q, setQ] = useState("");
   const [filtros, setFiltros] = useState<string[]>(filtrosIniciais);
-  const [concursoFiltro, setConcursoFiltro] = useState("");
+  const [concursoFiltro, setConcursoFiltro] = useState<string[]>([]);
+  const [concursoDropdownOpen, setConcursoDropdownOpen] = useState(false);
+  const concursoDropdownRef = useRef<HTMLDivElement>(null);
   const [planoFiltro, setPlanoFiltro] = useState<string[]>(planoInicial);
   const [planoDropdownOpen, setPlanoDropdownOpen] = useState(false);
   const planoDropdownRef = useRef<HTMLDivElement>(null);
@@ -103,7 +105,7 @@ export default function AlunosClient({
   const pageSize = 50;
 
   useEffect(() => {
-    buscar("", filtrosIniciais, "", planoInicial, true, 0, null);
+    buscar("", filtrosIniciais, [], planoInicial, true, 0, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -111,6 +113,9 @@ export default function AlunosClient({
     function handleClickOutside(e: MouseEvent) {
       if (planoDropdownRef.current && !planoDropdownRef.current.contains(e.target as Node)) {
         setPlanoDropdownOpen(false);
+      }
+      if (concursoDropdownRef.current && !concursoDropdownRef.current.contains(e.target as Node)) {
+        setConcursoDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -128,12 +133,12 @@ export default function AlunosClient({
     return "";
   }
 
-  async function buscar(query: string, f: string[], concurso: string, planos: string[], ativos: boolean, p: number, s: typeof sort) {
+  async function buscar(query: string, f: string[], concursoList: string[], planos: string[], ativos: boolean, p: number, s: typeof sort) {
     setLoading(true);
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (f.length > 0) params.set("filtro", f.join(","));
-    if (concurso) params.set("concurso", concurso);
+    if (concursoList.length > 0) params.set("concurso", concursoList.join(","));
     if (planos.length > 0) params.set("planoTipo", planos.join(","));
     if (ativos) params.set("ativo", "true");
     const ord = sortToParam(s);
@@ -160,9 +165,17 @@ export default function AlunosClient({
     buscar(q, next, concursoFiltro, planoFiltro, apenasAtivos, 0, sort);
   }
 
-  function handleConcurso(v: string) {
-    setConcursoFiltro(v);
-    buscar(q, filtros, v, planoFiltro, apenasAtivos, 0, sort);
+  function handleConcursoToggle(v: string) {
+    const next = concursoFiltro.includes(v)
+      ? concursoFiltro.filter((c) => c !== v)
+      : [...concursoFiltro, v];
+    setConcursoFiltro(next);
+    buscar(q, filtros, next, planoFiltro, apenasAtivos, 0, sort);
+  }
+
+  function handleConcursoAll() {
+    setConcursoFiltro([]);
+    buscar(q, filtros, [], planoFiltro, apenasAtivos, 0, sort);
   }
 
   function handlePlanoToggle(v: string) {
@@ -227,16 +240,57 @@ export default function AlunosClient({
             className="border border-slate-300 rounded-lg px-3 py-2 text-sm flex-1 min-w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {concursos.length > 0 && (
-            <select
-              value={concursoFiltro}
-              onChange={(e) => handleConcurso(e.target.value)}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              <option value="">Todos os concursos</option>
-              {concursos.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+            <div className="relative" ref={concursoDropdownRef}>
+              <button
+                onClick={() => setConcursoDropdownOpen((o) => !o)}
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center gap-2 min-w-48"
+              >
+                <span className="flex-1 text-left text-slate-700 truncate max-w-48">
+                  {concursoFiltro.length === 0
+                    ? "Todos os concursos"
+                    : concursoFiltro.length === 1
+                    ? concursoFiltro[0]
+                    : `${concursoFiltro.length} concursos`}
+                </span>
+                <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {concursoDropdownOpen && (
+                <div className="absolute z-20 mt-1 w-80 bg-white border border-slate-200 rounded-lg shadow-lg py-1 max-h-72 overflow-y-auto">
+                  <div className="flex gap-2 px-3 py-2 border-b border-slate-100">
+                    <button
+                      onClick={handleConcursoAll}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      Selecionar todos
+                    </button>
+                    {concursoFiltro.length > 0 && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        <button
+                          onClick={handleConcursoAll}
+                          className="text-xs text-red-500 hover:underline"
+                        >
+                          Limpar seleção
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {concursos.map((c) => (
+                    <label key={c} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={concursoFiltro.includes(c)}
+                        onChange={() => handleConcursoToggle(c)}
+                        className="accent-blue-600 shrink-0"
+                      />
+                      <span className="leading-tight">{c}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           <div className="relative" ref={planoDropdownRef}>
             <button
