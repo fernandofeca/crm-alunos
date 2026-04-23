@@ -16,16 +16,31 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+
+    // Valida credenciais primeiro para exibir mensagem específica
+    const check = await fetch("/api/auth/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    }).then((r) => r.json());
+
+    if (check.error === "usuario_nao_encontrado") {
+      setError("Usuário não encontrado.");
+      setLoading(false);
+      return;
+    }
+    if (check.error === "senha_incorreta") {
+      setError("Senha incorreta.");
+      setLoading(false);
+      return;
+    }
+
+    const res = await signIn("credentials", { email, password, redirect: false });
     setLoading(false);
     if (res?.ok) {
-      router.push("/");
+      window.location.href = "/";
     } else {
-      setError("Email ou senha incorretos.");
+      setError("Erro ao autenticar. Tente novamente.");
     }
   }
 
