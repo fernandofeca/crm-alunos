@@ -60,16 +60,21 @@ async function scrapeEngajamento(cookie: string): Promise<{ email: string; horas
     // Parse rows — try both table rows and list items
     let encontrou = false;
 
+    // Strip HTML tags to avoid matching IDs/classes inside attributes (e.g. id="student-201310h")
+    const stripTags = (s: string) => s.replace(/<[^>]*>/g, " ");
+    const horasRegex = /\b(\d+[,.]\d+\s*h|\d+\s*h\s*(?:\d+\s*(?:min|m)?)?|\d+:\d+)\b/i;
+
     // Pattern 1: tabela com mailto e célula de horas
     const rowsTable = html.split(/<tr[^>]*>/i).slice(1);
     for (const row of rowsTable) {
       const emailMatch = row.match(/href=['"]mailto:([^'"]+)['"]/i);
       if (!emailMatch) continue;
-      // Require explicit 'h' or colon to avoid matching bare numbers (IDs, row counts, etc.)
-      const horasMatch = row.match(/(\d+[,.]\d+\s*h|\d+h(?:\s*\d+\s*(?:min|m)?)?|\d+:\d+)/i);
+      const rowText = stripTags(row);
+      const horasMatch = rowText.match(horasRegex);
       if (!horasMatch) continue;
       const horas = parseHoras(horasMatch[1]);
-      if (horas > 0) {
+      // Sanity check: no one studies more than 100h/week
+      if (horas > 0 && horas <= 100) {
         resultado.push({ email: emailMatch[1].toLowerCase().trim(), horas });
         encontrou = true;
       }
@@ -83,10 +88,11 @@ async function scrapeEngajamento(cookie: string): Promise<{ email: string; horas
         if (!searchMatch) continue;
         const parts = searchMatch[1].trim().split(" ");
         const email = parts[parts.length - 1].toLowerCase();
-        const horasMatch = block.match(/(\d+[,.]\d+\s*h|\d+h(?:\s*\d+\s*(?:min|m)?)?|\d+:\d+)/i);
+        const blockText = stripTags(block);
+        const horasMatch = blockText.match(horasRegex);
         if (!horasMatch) continue;
         const horas = parseHoras(horasMatch[1]);
-        if (horas > 0) {
+        if (horas > 0 && horas <= 100) {
           resultado.push({ email, horas });
           encontrou = true;
         }
