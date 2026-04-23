@@ -282,7 +282,7 @@ export async function POST() {
     const trintaDias = new Date();
     trintaDias.setDate(trintaDias.getDate() - 30);
     await prisma.aluno.updateMany({
-      where: { ativo: true, dataInicio: { gte: trintaDias }, diasAtraso: { gte: 4 } },
+      where: { ativo: true, planoTipo: "Mentoria da Posse", dataInicio: { gte: trintaDias }, diasAtraso: { gte: 4 } },
       data: { acompanharDePerto: true },
     });
 
