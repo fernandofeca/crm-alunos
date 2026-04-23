@@ -9,15 +9,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const body = await req.json();
 
+  const contatoData = body.data ? new Date(body.data) : new Date();
+
   const contato = await prisma.contato.create({
     data: {
       alunoId: id,
       userId: (session.user?.id ?? "") as string,
       tipo: body.tipo,
       obs: body.obs ?? "",
-      ...(body.data ? { data: new Date(body.data) } : {}),
+      data: contatoData,
     },
     include: { user: true },
+  });
+
+  await prisma.aluno.update({
+    where: { id },
+    data: { ultimoContatoData: contatoData },
   });
 
   return NextResponse.json(contato, { status: 201 });

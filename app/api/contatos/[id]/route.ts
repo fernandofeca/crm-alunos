@@ -7,6 +7,18 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
   const { id } = await params;
-  await prisma.contato.delete({ where: { id } });
+  const contato = await prisma.contato.delete({ where: { id }, select: { alunoId: true } });
+
+  // Recalcula ultimoContatoData após deleção
+  const ultimo = await prisma.contato.findFirst({
+    where: { alunoId: contato.alunoId },
+    orderBy: { data: "desc" },
+    select: { data: true },
+  });
+  await prisma.aluno.update({
+    where: { id: contato.alunoId },
+    data: { ultimoContatoData: ultimo?.data ?? null },
+  });
+
   return NextResponse.json({ ok: true });
 }
