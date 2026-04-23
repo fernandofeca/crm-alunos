@@ -60,7 +60,7 @@ export default function LoginPage() {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/Carol.png"
+            src="/Carol.webp"
             alt="Carolina Gaubert"
             style={{
               position: "absolute",
