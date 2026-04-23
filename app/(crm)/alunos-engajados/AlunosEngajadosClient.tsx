@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 type Aluno = {
@@ -25,13 +26,25 @@ type Props = {
   conquistas: Conquista[];
   concursos: string[];
   sextas: string[];
+  mesAtual: string;
+  mesesDisponiveis: string[];
 };
 
 const PLANOS = ["Mentoria da Posse", "Mentoria Diamante", "Cronograma Ouro", "Cronograma Outros"];
 
+const MESES_NOMES: Record<number, string> = {
+  1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho",
+  7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
+};
+
+function fmtMes(mesStr: string) {
+  const [ano, mes] = mesStr.split("-").map(Number);
+  return `${MESES_NOMES[mes]} ${ano}`;
+}
+
 function fmtSemana(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
 }
 
 function fmtHoras(h: number) {
@@ -45,7 +58,8 @@ function whatsappUrl(numero: string) {
   return `https://wa.me/${limpo}`;
 }
 
-export default function AlunosEngajadosClient({ conquistas, concursos, sextas }: Props) {
+export default function AlunosEngajadosClient({ conquistas, concursos, sextas, mesAtual, mesesDisponiveis }: Props) {
+  const router = useRouter();
   const [planoFiltro, setPlanoFiltro] = useState<string[]>([]);
   const [concursoFiltro, setConcursoFiltro] = useState<string[]>([]);
   const [planoOpen, setPlanoOpen] = useState(false);
@@ -62,27 +76,16 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas }:
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Group conquistas by alunoId, collecting which weeks they got the badge
   const alunoMap = new Map<string, { aluno: Aluno; semanas: { semana: string; horas: number }[] }>();
   for (const c of conquistas) {
     const key = c.aluno.id;
-    if (!alunoMap.has(key)) {
-      alunoMap.set(key, { aluno: c.aluno, semanas: [] });
-    }
+    if (!alunoMap.has(key)) alunoMap.set(key, { aluno: c.aluno, semanas: [] });
     alunoMap.get(key)!.semanas.push({ semana: c.semana, horas: c.horas });
   }
 
   let entries = Array.from(alunoMap.values());
-
-  // Apply filters
-  if (planoFiltro.length > 0) {
-    entries = entries.filter((e) => planoFiltro.includes(e.aluno.planoTipo));
-  }
-  if (concursoFiltro.length > 0) {
-    entries = entries.filter((e) => concursoFiltro.includes(e.aluno.concurso));
-  }
-
-  // Sort by number of badges desc, then nome
+  if (planoFiltro.length > 0) entries = entries.filter((e) => planoFiltro.includes(e.aluno.planoTipo));
+  if (concursoFiltro.length > 0) entries = entries.filter((e) => concursoFiltro.includes(e.aluno.concurso));
   entries.sort((a, b) => {
     if (b.semanas.length !== a.semanas.length) return b.semanas.length - a.semanas.length;
     return a.aluno.nome.localeCompare(b.aluno.nome, "pt-BR");
@@ -91,19 +94,19 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas }:
   function togglePlano(p: string) {
     setPlanoFiltro((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   }
-
   function toggleConcurso(c: string) {
     setConcursoFiltro((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
   }
-
-  const sextaLabels = sextas.map(fmtSemana);
 
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Alunos Engajados</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Alunos com selo de engajamento nas últimas duas sextas: {sextaLabels.join(" e ")}
+          Selos de engajamento em <span className="font-medium">{fmtMes(mesAtual)}</span>
+          {sextas.length > 0 && (
+            <> — sextas: {sextas.map(fmtSemana).join(", ")}</>
+          )}
         </p>
       </div>
 
@@ -165,7 +168,18 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas }:
           )}
         </div>
 
-        <div className="flex items-center text-sm text-slate-500 ml-2">
+        {/* Mês/Ano selector */}
+        <select
+          value={mesAtual}
+          onChange={(e) => router.push(`/alunos-engajados?mes=${e.target.value}`)}
+          className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white hover:bg-slate-50 text-slate-600 cursor-pointer"
+        >
+          {mesesDisponiveis.map((m) => (
+            <option key={m} value={m}>{fmtMes(m)}</option>
+          ))}
+        </select>
+
+        <div className="flex items-center text-sm text-slate-500 ml-1">
           {entries.length} aluno{entries.length !== 1 ? "s" : ""}
         </div>
       </div>
@@ -190,12 +204,11 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas }:
             {entries.length === 0 && (
               <tr>
                 <td colSpan={6 + sextas.length} className="px-4 py-8 text-center text-slate-400">
-                  Nenhum aluno engajado encontrado.
+                  Nenhum aluno engajado neste mês.
                 </td>
               </tr>
             )}
             {entries.map(({ aluno, semanas }, idx) => {
-              const semanaSet = new Set(semanas.map((s) => s.semana));
               const horasPorSemana = Object.fromEntries(semanas.map((s) => [s.semana, s.horas]));
               return (
                 <tr key={aluno.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
@@ -218,18 +231,21 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas }:
                       <span className="text-xs text-slate-500 ml-1">({semanas.length}/{sextas.length})</span>
                     </span>
                   </td>
-                  {sextas.map((s) => (
-                    <td key={s} className="px-4 py-3 text-center">
-                      {semanaSet.has(s) ? (
-                        <span className="inline-flex flex-col items-center">
-                          <span className="text-lg">🏆</span>
-                          <span className="text-xs text-slate-500">{fmtHoras(horasPorSemana[s])}</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-200 text-lg">—</span>
-                      )}
-                    </td>
-                  ))}
+                  {sextas.map((s) => {
+                    const horas = horasPorSemana[s];
+                    return (
+                      <td key={s} className="px-4 py-3 text-center">
+                        {horas !== undefined ? (
+                          <span className="inline-flex flex-col items-center">
+                            <span className="text-lg">🏆</span>
+                            <span className="text-xs text-slate-500">{fmtHoras(horas)}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-200 text-lg">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {aluno.whatsapp && (

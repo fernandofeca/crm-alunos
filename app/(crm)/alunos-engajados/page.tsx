@@ -3,26 +3,34 @@ import AlunosEngajadosClient from "./AlunosEngajadosClient";
 
 export const dynamic = "force-dynamic";
 
-function ultimasDuasSextas(): Date[] {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  const dow = d.getUTCDay();
-  const diasAteSexta = (dow - 5 + 7) % 7;
-  const s1 = new Date(d);
-  s1.setUTCDate(d.getUTCDate() - diasAteSexta);
-  const s2 = new Date(s1);
-  s2.setUTCDate(s1.getUTCDate() - 7);
-  return [s1, s2];
+function sextasDoMes(ano: number, mes: number): Date[] {
+  const sextas: Date[] = [];
+  const d = new Date(Date.UTC(ano, mes - 1, 1));
+  while (d.getUTCDay() !== 5) d.setUTCDate(d.getUTCDate() + 1);
+  while (d.getUTCMonth() === mes - 1) {
+    sextas.push(new Date(d));
+    d.setUTCDate(d.getUTCDate() + 7);
+  }
+  return sextas;
 }
 
-export default async function AlunosEngajadosPage() {
-  const [sexta1, sexta2] = ultimasDuasSextas();
+export default async function AlunosEngajadosPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
+  const { mes } = await searchParams;
+
+  const hoje = new Date();
+  let ano = hoje.getUTCFullYear();
+  let mesNum = hoje.getUTCMonth() + 1;
+
+  if (mes && /^\d{4}-\d{2}$/.test(mes)) {
+    const [y, m] = mes.split("-").map(Number);
+    ano = y;
+    mesNum = m;
+  }
+
+  const sextas = sextasDoMes(ano, mesNum);
 
   const conquistas = await prisma.conquista.findMany({
-    where: {
-      semana: { in: [sexta1, sexta2] },
-      tipo: "engajamento_semanal",
-    },
+    where: { semana: { in: sextas }, tipo: "engajamento_semanal" },
     include: {
       aluno: {
         select: {
@@ -37,7 +45,7 @@ export default async function AlunosEngajadosPage() {
         },
       },
     },
-    orderBy: { semana: "desc" },
+    orderBy: { semana: "asc" },
   });
 
   const concursosRaw = await prisma.aluno.findMany({
@@ -48,11 +56,25 @@ export default async function AlunosEngajadosPage() {
   });
   const concursos = concursosRaw.map((c) => c.concurso).filter(Boolean);
 
+  // Months available from April 2026 to current month
+  const mesesDisponiveis: string[] = [];
+  const inicio = new Date(Date.UTC(2026, 3, 1));
+  const limite = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), 1));
+  const cursor = new Date(inicio);
+  while (cursor <= limite) {
+    mesesDisponiveis.push(`${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`);
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+
+  const mesAtual = `${ano}-${String(mesNum).padStart(2, "0")}`;
+
   return (
     <AlunosEngajadosClient
       conquistas={JSON.parse(JSON.stringify(conquistas))}
       concursos={concursos}
-      sextas={[sexta1.toISOString(), sexta2.toISOString()]}
+      sextas={sextas.map((s) => s.toISOString())}
+      mesAtual={mesAtual}
+      mesesDisponiveis={mesesDisponiveis}
     />
   );
 }
