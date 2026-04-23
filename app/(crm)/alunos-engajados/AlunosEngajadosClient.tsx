@@ -11,6 +11,7 @@ type Aluno = {
   concurso: string;
   planoTipo: string;
   ativo: boolean;
+  tutoryId: number | null;
 };
 
 type Conquista = {
@@ -199,7 +200,16 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas }:
               return (
                 <tr key={aluno.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
                   <td className="px-4 py-3 text-slate-400">{idx + 1}</td>
-                  <td className="px-4 py-3 font-medium text-slate-800">{aluno.nome}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {aluno.tutoryId ? (
+                      <a href={`https://admin.tutory.com.br/alunos/index?aid=${aluno.tutoryId}`} target="_blank" rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 hover:underline">
+                        {aluno.nome}
+                      </a>
+                    ) : (
+                      <span className="text-slate-800">{aluno.nome}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{aluno.concurso}</td>
                   <td className="px-4 py-3 text-slate-600">{aluno.planoTipo}</td>
                   <td className="px-4 py-3 text-center">

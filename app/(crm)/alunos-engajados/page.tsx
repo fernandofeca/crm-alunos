@@ -33,6 +33,7 @@ export default async function AlunosEngajadosPage() {
           concurso: true,
           planoTipo: true,
           ativo: true,
+          tutoryId: true,
         },
       },
     },
