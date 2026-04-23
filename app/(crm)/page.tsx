@@ -24,7 +24,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     prisma.aluno.count({ where: { ativo: true } }),
     prisma.aluno.count({ where: { ativo: true, taxaAcertos: { gt: 0, lt: 60 } } }),
-    prisma.aluno.count({ where: { ativo: true, contatos: { none: {} } } }),
+    prisma.aluno.count({ where: { ativo: true, planoTipo: "Mentoria da Posse", contatos: { none: {} } } }),
     prisma.aluno.count({ where: { ativo: true, dataInicio: { gte: trinta } } }),
     prisma.aluno.count({ where: { ativo: true, diasAtraso: 0 } }),
     prisma.aluno.count({ where: { ativo: true, diasAtraso: 1 } }),
@@ -61,7 +61,7 @@ export default async function DashboardPage() {
     { label: "Total de Alunos", value: total, color: "bg-blue-50 text-blue-700", border: "border-blue-200", href: "/alunos" },
     { label: "Novos Alunos (30d)", value: novosAlunos, color: "bg-indigo-50 text-indigo-700", border: "border-indigo-200", href: "/alunos?filtro=novos" },
     { label: "Taxa baixa (<60%)", value: taxaBaixa, color: "bg-red-50 text-red-700", border: "border-red-200", href: "/alunos?filtro=nota_baixa" },
-    { label: "Sem contato", value: semContato, color: "bg-yellow-50 text-yellow-700", border: "border-yellow-200", href: "/alunos?filtro=sem_contato" },
+    { label: "Sem contato (Posse)", value: semContato, color: "bg-yellow-50 text-yellow-700", border: "border-yellow-200", href: `/alunos?filtro=sem_contato&planoTipo=${encodeURIComponent("Mentoria da Posse")}` },
   ];
 
   const cardsMetas = [
