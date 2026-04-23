@@ -25,6 +25,7 @@ const migrations = [
   "../prisma/migrations/20260422000004_aluno_taxa_acertos/migration.sql",
   "../prisma/migrations/20260422000005_aluno_tutory_created_at/migration.sql",
   "../prisma/migrations/20260422000006_aluno_acompanhar_data_inicio/migration.sql",
+  "../prisma/migrations/20260422000007_aluno_tutory_id/migration.sql",
 ];
 
 for (const file of migrations) {
