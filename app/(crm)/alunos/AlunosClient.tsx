@@ -173,7 +173,12 @@ export default function AlunosClient({
     buscar(q, filtros, next, planoFiltro, apenasAtivos, 0, sort);
   }
 
-  function handleConcursoAll() {
+  function handleConcursoSelectAll() {
+    setConcursoFiltro(concursos);
+    buscar(q, filtros, concursos, planoFiltro, apenasAtivos, 0, sort);
+  }
+
+  function handleConcursoClear() {
     setConcursoFiltro([]);
     buscar(q, filtros, [], planoFiltro, apenasAtivos, 0, sort);
   }
@@ -260,22 +265,18 @@ export default function AlunosClient({
                 <div className="absolute z-20 mt-1 w-80 bg-white border border-slate-200 rounded-lg shadow-lg py-1 max-h-72 overflow-y-auto">
                   <div className="flex gap-2 px-3 py-2 border-b border-slate-100">
                     <button
-                      onClick={handleConcursoAll}
+                      onClick={handleConcursoSelectAll}
                       className="text-xs text-blue-600 hover:underline"
                     >
                       Selecionar todos
                     </button>
-                    {concursoFiltro.length > 0 && (
-                      <>
-                        <span className="text-slate-300">·</span>
-                        <button
-                          onClick={handleConcursoAll}
-                          className="text-xs text-red-500 hover:underline"
-                        >
-                          Limpar seleção
-                        </button>
-                      </>
-                    )}
+                    <span className="text-slate-300">·</span>
+                    <button
+                      onClick={handleConcursoClear}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Limpar seleção
+                    </button>
                   </div>
                   {concursos.map((c) => (
                     <label key={c} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm text-slate-700">
