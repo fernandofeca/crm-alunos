@@ -41,6 +41,7 @@ model Aluno {
   diasAtraso          Int      @default(0)
   taxaAcertos         Float    @default(0)
   totalQuestoes       Int      @default(0)
+  tutoryId            Int?
   tutoryCreatedAt     DateTime?
   dataInicio          DateTime?
   acompanharDePerto   Boolean  @default(false)

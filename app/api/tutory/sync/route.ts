@@ -239,6 +239,7 @@ export async function POST() {
               concurso: concurso || existente.concurso,
               planoVencimento,
               ativo,
+              tutoryId: t.id,
               ...(cpf && !existente.cpf ? { cpf } : {}),
               ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}),
             },
@@ -246,7 +247,7 @@ export async function POST() {
           resultados.atualizados++;
         } else if (ativo) {
           await prisma.aluno.create({
-            data: { nome, email: email || `sem-email-tutory-${t.id}`, cpf, whatsapp, concurso, planoVencimento, ativo: true, ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}) },
+            data: { nome, email: email || `sem-email-tutory-${t.id}`, cpf, whatsapp, concurso, planoVencimento, ativo: true, tutoryId: t.id, ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}) },
           });
           resultados.criados++;
         }

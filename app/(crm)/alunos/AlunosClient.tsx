@@ -30,6 +30,7 @@ type Aluno = {
   totalQuestoes: number;
   diasAtraso: number;
   dataInicio: string | null;
+  tutoryId: number | null;
   disciplinas: Disciplina[];
   contatos: Contato[];
 };
@@ -313,7 +314,18 @@ export default function AlunosClient({
               return (
                 <tr key={a.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-800">{a.nome}</div>
+                    {a.tutoryId ? (
+                      <a
+                        href={`https://admin.tutory.com.br/alunos/index?aid=${a.tutoryId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {a.nome}
+                      </a>
+                    ) : (
+                      <div className="font-medium text-slate-800">{a.nome}</div>
+                    )}
                     <div className="text-xs text-slate-400">{a.email}</div>
                     {a.cpf && <div className="text-xs text-slate-400">CPF: {a.cpf}</div>}
                   </td>
