@@ -12,7 +12,7 @@ export default async function AlunosPage() {
     prisma.aluno.findMany({
       select: { concurso: true },
       distinct: ["concurso"],
-      where: { concurso: { not: "" } },
+      where: { concurso: { not: "" }, ativo: true },
       orderBy: { concurso: "asc" },
     }),
   ]);
