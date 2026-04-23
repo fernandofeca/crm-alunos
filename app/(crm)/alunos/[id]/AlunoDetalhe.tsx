@@ -486,7 +486,7 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid sm:grid-cols-2 gap-6">
         {/* Conquistas */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -588,38 +588,39 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
           </div>
         </div>
 
-        {/* Disciplinas e Assuntos */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h2 className="text-base font-semibold text-slate-700 mb-4">Disciplinas e Assuntos</h2>
-          {aluno.disciplinas.length === 0 ? (
-            <p className="text-sm text-slate-400">Nenhuma disciplina cadastrada</p>
-          ) : (
-            <div className="space-y-4">
-              {aluno.disciplinas.map((d) => (
-                <div key={d.id}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-700">{d.nome}</span>
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${notaBadge(d.nota)}`}>
-                      {d.nota.toFixed(1)}
-                    </span>
-                  </div>
-                  {d.assuntos.length > 0 && (
-                    <div className="pl-3 space-y-1">
-                      {d.assuntos.map((a) => (
-                        <div key={a.id} className="flex items-center justify-between">
-                          <span className="text-xs text-slate-500">{a.nome}</span>
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${notaBadge(a.nota)}`}>
-                            {a.nota.toFixed(1)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+      </div>
+
+      {/* Disciplinas e Assuntos */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <h2 className="text-base font-semibold text-slate-700 mb-4">Disciplinas e Assuntos</h2>
+        {aluno.disciplinas.length === 0 ? (
+          <p className="text-sm text-slate-400">Nenhuma disciplina cadastrada</p>
+        ) : (
+          <div className="space-y-4">
+            {aluno.disciplinas.map((d) => (
+              <div key={d.id}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-slate-700">{d.nome}</span>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${notaBadge(d.nota)}`}>
+                    {d.nota.toFixed(1)}
+                  </span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                {d.assuntos.length > 0 && (
+                  <div className="pl-3 space-y-1">
+                    {d.assuntos.map((a) => (
+                      <div key={a.id} className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500">{a.nome}</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${notaBadge(a.nota)}`}>
+                          {a.nota.toFixed(1)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
