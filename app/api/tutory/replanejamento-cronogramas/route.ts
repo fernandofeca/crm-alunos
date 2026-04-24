@@ -1,227 +1,212 @@
 /**
  * Replanejamento de Cronogramas
  *
- * Chama POST /intent/selecionar-notificacoes no app.tutory.com.br
- * com id={tutoryId} — o mesmo request que o browser faz ao clicar OK
- * no popup "Cronograma Replanejado".
- *
- * Requer login em app.tutory.com.br para obter PHPSESSID + Bearer token.
+ * Para cada aluno atrasado:
+ *  1. Scrapa id, cpf, token, adm_id do formulário em /alunos/atraso
+ *  2. POST ver-painel → obtém PHPSESSID do app.tutory.com.br
+ *  3. POST selecionar-notificacoes com esse PHPSESSID → dispara o replanejamento
  */
 
-import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 
-function sextaAtual(): Date {
-  const sp = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-  const [ano, mes, dia] = sp.split("-").map(Number);
-  const hoje = new Date(Date.UTC(ano, mes - 1, dia));
-  const dow = hoje.getUTCDay();
-  const sexta = new Date(hoje);
-  if (dow !== 5) sexta.setUTCDate(hoje.getUTCDate() + ((5 - dow + 7) % 7));
-  return sexta;
-}
-
-interface AppAuth {
-  phpsessid: string;
-  bearerToken: string;
-}
-
-async function getAppAuth(): Promise<AppAuth | null> {
+async function getAdminCookie(): Promise<string> {
   const account = process.env.TUTORY_ACCOUNT ?? "";
   const password = process.env.TUTORY_PASSWORD ?? "";
-  if (!account || !password) return null;
-
-  // 1. Login em app.tutory.com.br
-  const loginRes = await fetch("https://app.tutory.com.br/intent/login", {
+  if (!account || !password) return "";
+  const res = await fetch("https://admin.tutory.com.br/intent/login", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "X-Requested-With": "XMLHttpRequest",
-      Origin: "https://app.tutory.com.br",
-    },
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" },
     body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
     redirect: "manual",
   });
+  return res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+}
 
-  const setCookie = loginRes.headers.get("set-cookie") ?? "";
-  const phpsessid = setCookie.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+interface AlunoForm {
+  id: string;
+  cpf: string;
+  token: string;
+  admId: string;
+  nome: string;
+  email: string;
+}
 
-  // 2. Tentar extrair Bearer do corpo da resposta
-  let bearerToken = process.env.TUTORY_APP_TOKEN ?? "";
+async function scraparFormularios(adminCookie: string): Promise<AlunoForm[]> {
+  const result: AlunoForm[] = [];
+
+  async function parsePage(html: string) {
+    const blocks = html.split('class="student-list-item"');
+    for (const block of blocks.slice(1)) {
+      const searchMatch = block.match(/data-search="([^"]+)"/);
+      if (!searchMatch) continue;
+      const parts = searchMatch[1].trim().split(" ");
+      const email = parts[parts.length - 1].toLowerCase();
+      const nome = parts.slice(0, -1).join(" ").trim();
+
+      const id    = block.match(/name="id"\s+value="(\d+)"/)?.[1] ?? "";
+      const cpf   = block.match(/name="cpf"\s+value="([^"]+)"/)?.[1] ?? "";
+      const token = block.match(/name="token"\s+value="([^"]+)"/)?.[1] ?? "";
+      const admId = block.match(/name="adm_id"\s+value="(\d+)"/)?.[1] ?? "";
+
+      if (id && cpf && token && admId) {
+        result.push({ id, cpf, token, admId, nome, email });
+      }
+    }
+  }
+
+  const firstHtml = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", {
+    headers: { Cookie: adminCookie },
+  }).then(r => r.text());
+
+  if (firstHtml.includes('document.location.href = "/login"')) return [];
+  await parsePage(firstHtml);
+
+  const totalPagesMatch = firstHtml.match(/\?p=(\d+)[^"]*">Última/);
+  const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1], 10) : 1;
+
+  for (let start = 2; start <= totalPages; start += 5) {
+    const batch = [];
+    for (let p = start; p < start + 5 && p <= totalPages; p++) {
+      batch.push(
+        fetch(`https://admin.tutory.com.br/alunos/atraso?p=${p}`, { headers: { Cookie: adminCookie } })
+          .then(r => r.text())
+          .then(parsePage)
+      );
+    }
+    await Promise.all(batch);
+  }
+
+  return result;
+}
+
+async function replanejamentoAluno(aluno: AlunoForm): Promise<{ nome: string; id: string; status: number | string }> {
   try {
-    const body = await loginRes.text();
-    const tokenMatch = body.match(/"token"\s*:\s*"([^"]+)"/);
-    if (tokenMatch) bearerToken = tokenMatch[1];
-  } catch { /* ignorar */ }
+    // 1. ver-painel → obtém PHPSESSID do app.tutory.com.br
+    const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Requested-With": "XMLHttpRequest",
+        Origin: "https://app.tutory.com.br",
+        Referer: "https://admin.tutory.com.br/alunos/atraso",
+      },
+      body: `cpf=${encodeURIComponent(aluno.cpf)}&id=${aluno.id}&token=${encodeURIComponent(aluno.token)}&adm_id=${aluno.admId}`,
+      redirect: "manual",
+    });
 
-  if (!phpsessid) return null;
-  return { phpsessid, bearerToken };
+    const appPhpsessid = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+
+    // 2. selecionar-notificacoes com a sessão obtida
+    const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${aluno.token}`,
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Accept: "*/*",
+        ...(appPhpsessid ? { Cookie: appPhpsessid } : {}),
+        Origin: "https://app.tutory.com.br",
+        Referer: "https://app.tutory.com.br/painel/",
+      },
+      body: `id=${aluno.id}`,
+    });
+
+    return { nome: aluno.nome, id: aluno.id, status: notifRes.status };
+  } catch (e) {
+    return { nome: aluno.nome, id: aluno.id, status: String(e) };
+  }
 }
 
 async function executarReplanejamento() {
-  // Autenticar em app.tutory.com.br
-  const appAuth = await getAppAuth();
-  if (!appAuth) {
-    return NextResponse.json(
-      { error: "Falha no login em app.tutory.com.br — verifique TUTORY_ACCOUNT e TUTORY_PASSWORD" },
-      { status: 500 }
-    );
+  const adminCookie = await getAdminCookie();
+  if (!adminCookie) {
+    return NextResponse.json({ error: "Falha no login admin" }, { status: 500 });
   }
 
-  const { phpsessid, bearerToken } = appAuth;
+  const alunos = await scraparFormularios(adminCookie);
 
-  if (!bearerToken) {
-    return NextResponse.json(
-      { error: "Bearer token não disponível — configure TUTORY_APP_TOKEN" },
-      { status: 500 }
-    );
-  }
-
-  // Busca alunos do snapshot desta semana com tutoryId no CRM
-  const snapshots = await prisma.snapshotAtraso.findMany({
-    where: {
-      semana: sextaAtual(),
-      aluno: { tutoryId: { not: null } },
-    },
-    include: { aluno: { select: { tutoryId: true } } },
-  });
-
-  if (snapshots.length === 0) {
+  if (alunos.length === 0) {
     return NextResponse.json({
       ok: true,
       total: 0,
-      msg: "Nenhum aluno no snapshot desta semana com tutoryId",
+      msg: "Nenhum aluno atrasado encontrado",
       executadoEm: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
     });
   }
 
-  const resultados: { nome: string; tutoryId: string; status: number | string }[] = [];
+  const resultados: { nome: string; id: string; status: number | string }[] = [];
 
-  for (let i = 0; i < snapshots.length; i += 5) {
-    const lote = snapshots.slice(i, i + 5);
-    const resps = await Promise.all(
-      lote.map(async (s) => {
-        const tutoryId = String(s.aluno!.tutoryId!);
-        try {
-          const r = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${bearerToken}`,
-              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-              Accept: "*/*",
-              Cookie: phpsessid,
-              Origin: "https://app.tutory.com.br",
-              Referer: "https://app.tutory.com.br/painel/",
-            },
-            body: `id=${tutoryId}`,
-          });
-          return { nome: s.nome, tutoryId, status: r.status };
-        } catch (e) {
-          return { nome: s.nome, tutoryId, status: String(e) };
-        }
-      })
-    );
+  for (let i = 0; i < alunos.length; i += 3) {
+    const lote = alunos.slice(i, i + 3);
+    const resps = await Promise.all(lote.map(replanejamentoAluno));
     resultados.push(...resps);
-    if (i + 5 < snapshots.length) await new Promise((r) => setTimeout(r, 200));
+    if (i + 3 < alunos.length) await new Promise(r => setTimeout(r, 300));
   }
 
-  const sucessos = resultados.filter((r) => typeof r.status === "number" && r.status < 400).length;
+  const sucessos = resultados.filter(r => typeof r.status === "number" && r.status < 400).length;
 
   return NextResponse.json({
     ok: true,
+    total: alunos.length,
     replanejados: sucessos,
-    total: snapshots.length,
-    phpsessidObtido: !!phpsessid,
-    falhas: resultados.filter((r) => typeof r.status !== "number" || r.status >= 400),
+    falhas: resultados.filter(r => typeof r.status !== "number" || r.status >= 400),
     executadoEm: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
   });
 }
 
-// GET ?key=cg-bulk-2026&debug=1 — testa o login e mostra resposta
-// GET ?key=cg-bulk-2026 — cron (responde imediatamente)
+// GET ?key=cg-bulk-2026&debug=1 — testa com o primeiro aluno e mostra detalhes
+// GET ?key=cg-bulk-2026 — cron (background)
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
   if (req.nextUrl.searchParams.get("debug") === "1") {
-    const account = process.env.TUTORY_ACCOUNT ?? "";
-    const password = process.env.TUTORY_PASSWORD ?? "";
+    const adminCookie = await getAdminCookie();
+    if (!adminCookie) return NextResponse.json({ error: "Login admin falhou" });
 
-    // 1. Login no admin
-    const loginRes = await fetch("https://admin.tutory.com.br/intent/login", {
+    const alunos = await scraparFormularios(adminCookie);
+    const primeiro = alunos[0];
+    if (!primeiro) return NextResponse.json({ error: "Nenhum aluno na lista" });
+
+    // Testar ver-painel
+    const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" },
-      body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Requested-With": "XMLHttpRequest",
+        Origin: "https://app.tutory.com.br",
+        Referer: "https://admin.tutory.com.br/alunos/atraso",
+      },
+      body: `cpf=${encodeURIComponent(primeiro.cpf)}&id=${primeiro.id}&token=${encodeURIComponent(primeiro.token)}&adm_id=${primeiro.admId}`,
       redirect: "manual",
     });
-    const adminCookie = loginRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
-    if (!adminCookie) return NextResponse.json({ erro: "Login admin falhou", status: loginRes.status });
 
-    // 2. Buscar página de atrasos
-    const atrasosHtml = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", {
-      headers: { Cookie: adminCookie },
-    }).then(r => r.text());
+    const appPhpsessid = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+    const verBody = await verRes.text();
 
-    // Pegar primeiro bloco completo (até o próximo student-list-item)
-    const blocos = atrasosHtml.split('class="student-list-item"');
-    const primeiroBloco = blocos[1]?.slice(0, 3000) ?? "";
-
-    // Extrair sub_id ou id dos links de ver-painel
-    const verPainelLinks = [...atrasosHtml.matchAll(/ver-painel[^"'<>\s]*/g)].map(m => m[0]).slice(0, 3);
-    const dataAttrs = [...primeiroBloco.matchAll(/data-[\w-]+=["']([^"']+)["']/g)].map(m => `${m[0]}`).slice(0, 10);
-    const onclickAttrs = [...primeiroBloco.matchAll(/onclick="([^"]+)"/g)].map(m => m[1]).slice(0, 5);
-
-    // 3. Tentar chamar ver-painel com sub_id do primeiro aluno atrasado
-    // Extrair o tutoryId do primeiro aluno
-    const primeiroAid = primeiroBloco.match(/aid=(\d+)/)?.[1] ??
-                        primeiroBloco.match(/sub_id=(\d+)/)?.[1] ??
-                        primeiroBloco.match(/data-id="(\d+)"/)?.[1];
-
-    let verPainelTeste = null;
-    if (primeiroAid) {
-      const payloads = [
-        `sub_id=${primeiroAid}`,
-        `id=${primeiroAid}`,
-        `aid=${primeiroAid}`,
-      ];
-      verPainelTeste = await Promise.all(payloads.map(async (body) => {
-        const r = await fetch("https://app.tutory.com.br/intent/ver-painel", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-Requested-With": "XMLHttpRequest",
-            Cookie: adminCookie,
-            Origin: "https://app.tutory.com.br",
-            Referer: "https://admin.tutory.com.br/alunos/atraso",
-          },
-          body,
-          redirect: "manual",
-        });
-        const respBody = await r.text();
-        const setCookie = r.headers.get("set-cookie") ?? "";
-        return {
-          body,
-          status: r.status,
-          phpsessidApp: setCookie.match(/PHPSESSID=[^;]+/)?.[0] ?? null,
-          location: r.headers.get("location"),
-          respPreview: respBody.slice(0, 200),
-        };
-      }));
-    }
+    // Testar selecionar-notificacoes
+    const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${primeiro.token}`,
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        ...(appPhpsessid ? { Cookie: appPhpsessid } : {}),
+        Origin: "https://app.tutory.com.br",
+        Referer: "https://app.tutory.com.br/painel/",
+      },
+      body: `id=${primeiro.id}`,
+    });
+    const notifBody = await notifRes.text();
 
     return NextResponse.json({
-      adminLoginOk: true,
-      verPainelLinks,
-      dataAttrs,
-      onclickAttrs,
-      primeiroAidEncontrado: primeiroAid,
-      verPainelTeste,
-      primeiroBlocoHtml: primeiroBloco,
+      totalAlunos: alunos.length,
+      primeiroAluno: { nome: primeiro.nome, id: primeiro.id, cpf: primeiro.cpf.slice(0, 3) + "****" },
+      verPainel: { status: verRes.status, phpsessidObtido: !!appPhpsessid, bodyPreview: verBody.slice(0, 300) },
+      selecionarNotificacoes: { status: notifRes.status, body: notifBody.slice(0, 300) },
     });
   }
 
-  executarReplanejamento().catch((e) => console.error("[replanejamento-bg]", e));
+  executarReplanejamento().catch(e => console.error("[replanejamento-bg]", e));
   return NextResponse.json({
     ok: true,
     message: "Replanejamento iniciado em background",
