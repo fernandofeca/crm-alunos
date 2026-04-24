@@ -1,14 +1,14 @@
 /**
  * Replanejamento de Cronogramas
  *
- * Hipótese atual: admin:1 sessions não disparam o replanejamento server-side.
- * Testando ver-painel SEM adm_id para obter sessão admin:0 (sessão de aluno).
+ * Teste decisivo: visitar /painel/ duas vezes.
+ * - Se swal desaparece na 2ª visita → o PHP processa o replan na 1ª visita (automação funciona)
+ * - Se swal ainda aparece na 2ª visita → o PHP não processa na visita do servidor, precisamos de outra abordagem
  *
- * Dados confirmados pelo debug:
- * - jsAluno.id = '342258' (com aspas, regex corrigida)
- * - jsAluno.admin: 1 = sessão de admin (pode não acionar o replan)
- * - excluir-notificacao precisa do campo NOT_ID (não id)
- * - notificação encontrada foi de mural (tipo diferente do replan)
+ * Outros achados dos debugs anteriores:
+ * - admin:0 não é possível via ver-painel (sempre admin:1)
+ * - excluir-notificacao funciona com NOT_ID mas só remove notifs de mural
+ * - o swal "Cronograma Replanejado" é um mecanismo separado do sistema de notificações
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -86,7 +86,6 @@ async function scraparFormularios(adminCookie: string): Promise<AlunoForm[]> {
   return result;
 }
 
-/** Extrai jsAluno.id do HTML (pode ser quoted: id: '12345' ou unquoted: id: 12345) */
 function extrairJsAlunoId(html: string): string | null {
   return (
     html.match(/jsAluno\s*=\s*\{[^}]*?\bid\s*:\s*['"]?(\d+)['"]?/i)?.[1] ??
@@ -95,14 +94,8 @@ function extrairJsAlunoId(html: string): string | null {
   );
 }
 
-/** Extrai o valor de jsAluno.admin (0 = aluno, 1 = admin) */
-function extrairJsAlunoAdmin(html: string): string | null {
-  return html.match(/jsAluno\s*=\s*\{[^}]*?\badmin\s*:\s*(\d+)/i)?.[1] ?? null;
-}
-
 interface NotifEntry {
   NOT_ID?: string | number;
-  id?: string | number;
   [key: string]: unknown;
 }
 
@@ -110,55 +103,33 @@ interface ReplanejamentoResult {
   nome: string;
   id: string;
   status: string;
-  adminFlag?: string | null;
   notificacoes?: NotifEntry[];
   excluidos?: (string | number)[];
 }
 
-async function obterSessao(
-  aluno: AlunoForm,
-  semAdmId = false
-): Promise<{ cookie: string; location: string; status: number } | null> {
-  const body = semAdmId
-    ? `cpf=${encodeURIComponent(aluno.cpf)}&id=${aluno.id}&token=${encodeURIComponent(aluno.token)}`
-    : `cpf=${encodeURIComponent(aluno.cpf)}&id=${aluno.id}&token=${encodeURIComponent(aluno.token)}&adm_id=${aluno.admId}`;
-
-  const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "X-Requested-With": "XMLHttpRequest",
-      Origin: "https://app.tutory.com.br",
-      Referer: "https://admin.tutory.com.br/alunos/atraso",
-    },
-    body,
-    redirect: "manual",
-  });
-
-  const cookie = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
-  const location = verRes.headers.get("location") ?? "/painel/";
-  if (!cookie) return null;
-  return { cookie, location, status: verRes.status };
-}
-
 async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResult> {
   try {
-    // Tentar sessão sem adm_id (admin:0) primeiro
-    let sessao = await obterSessao(aluno, true);
-    let semAdmId = true;
-    if (!sessao) {
-      sessao = await obterSessao(aluno, false);
-      semAdmId = false;
-    }
-    if (!sessao) return { nome: aluno.nome, id: aluno.id, status: "sem-sessão" };
+    // 1. ver-painel → PHPSESSID
+    const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Requested-With": "XMLHttpRequest",
+        Origin: "https://app.tutory.com.br",
+        Referer: "https://admin.tutory.com.br/alunos/atraso",
+      },
+      body: `cpf=${encodeURIComponent(aluno.cpf)}&id=${aluno.id}&token=${encodeURIComponent(aluno.token)}&adm_id=${aluno.admId}`,
+      redirect: "manual",
+    });
 
-    let sessionCookie = sessao.cookie;
-    const panelUrl = sessao.location.startsWith("http")
-      ? sessao.location
-      : `https://app.tutory.com.br${sessao.location}`;
+    let sessionCookie = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+    const location = verRes.headers.get("location") ?? "/painel/";
+    const panelUrl = location.startsWith("http") ? location : `https://app.tutory.com.br${location}`;
 
-    // Visitar painel → extrair jsAluno
-    const panelRes = await fetch(panelUrl, {
+    if (!sessionCookie) return { nome: aluno.nome, id: aluno.id, status: "sem-sessão" };
+
+    // 2. Visitar /painel/ (1ª visita — PHP gera o swal e pode processar o replan)
+    const painel1 = await fetch(panelUrl, {
       headers: {
         Cookie: sessionCookie,
         "User-Agent": BROWSER_UA,
@@ -167,12 +138,11 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResu
       },
       redirect: "follow",
     });
-    const updatedCookie = panelRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
-    if (updatedCookie) sessionCookie = updatedCookie;
-    const panelHtml = await panelRes.text();
+    const updated1 = painel1.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
+    if (updated1) sessionCookie = updated1;
+    const html1 = await painel1.text();
 
-    const jsAlunoId = extrairJsAlunoId(panelHtml) ?? aluno.id;
-    const adminFlag = extrairJsAlunoAdmin(panelHtml);
+    const jsAlunoId = extrairJsAlunoId(html1) ?? aluno.id;
 
     const headers = {
       Authorization: `Bearer ${aluno.token}`,
@@ -184,7 +154,7 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResu
       Referer: panelUrl,
     };
 
-    // selecionar-notificacoes → lista de notificações
+    // 3. selecionar-notificacoes → lista com NOT_ID
     const selecionarRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
       method: "POST",
       headers,
@@ -193,10 +163,10 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResu
     const selecionarData = await selecionarRes.json().catch(() => null) as { data?: NotifEntry[] } | null;
     const notificacoes: NotifEntry[] = Array.isArray(selecionarData?.data) ? selecionarData!.data : [];
 
-    // excluir cada notificação usando NOT_ID
+    // 4. excluir cada notificação pelo NOT_ID
     const excluidos: (string | number)[] = [];
     for (const notif of notificacoes) {
-      const notifId = notif.NOT_ID ?? notif.id;
+      const notifId = notif.NOT_ID;
       if (!notifId) continue;
       const excluirRes = await fetch("https://app.tutory.com.br/intent/excluir-notificacao", {
         method: "POST",
@@ -206,7 +176,7 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResu
       if (excluirRes.ok) excluidos.push(notifId);
     }
 
-    // Visitar /painel/config/replanejar-atrasos como segunda estratégia
+    // 5. Visitar /painel/config/replanejar-atrasos (confirma o replanejamento)
     await fetch("https://app.tutory.com.br/painel/config/replanejar-atrasos", {
       method: "GET",
       headers: {
@@ -221,8 +191,7 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResu
     return {
       nome: aluno.nome,
       id: aluno.id,
-      adminFlag,
-      status: semAdmId ? "sem-admId" : "com-admId",
+      status: "ok",
       notificacoes,
       excluidos,
     };
@@ -257,21 +226,18 @@ async function executarReplanejamento() {
     if (i + 3 < alunos.length) await new Promise((r) => setTimeout(r, 600));
   }
 
-  const semAdmId = resultados.filter((r) => r.status === "sem-admId").length;
-  const comNotif = resultados.filter((r) => (r.notificacoes?.length ?? 0) > 0).length;
-  const falhas   = resultados.filter((r) => r.status !== "sem-admId" && r.status !== "com-admId");
+  const falhas = resultados.filter((r) => r.status !== "ok");
 
   return NextResponse.json({
     ok: true,
     total: alunos.length,
-    semAdmId,
-    comNotificacoesExcluidas: comNotif,
+    replanejados: resultados.length - falhas.length,
     falhas,
     executadoEm: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
   });
 }
 
-// GET ?key=cg-bulk-2026&debug=1  → testa ver-painel sem adm_id, mostra jsAluno.admin
+// GET ?key=cg-bulk-2026&debug=1  → teste decisivo: swal na 2ª visita ao painel?
 // GET ?key=cg-bulk-2026           → cron (background)
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
@@ -285,83 +251,69 @@ export async function GET(req: NextRequest) {
     const primeiro = alunos[0];
     if (!primeiro) return NextResponse.json({ error: "Nenhum aluno na lista" });
 
-    // Testar ver-painel SEM adm_id → esperamos admin:0
-    const semAdmId = await obterSessao(primeiro, true);
-    // Testar ver-painel COM adm_id → confirmado admin:1
-    const comAdmId = await obterSessao(primeiro, false);
-
-    async function inspecionarSessao(sessao: { cookie: string; location: string } | null, label: string) {
-      if (!sessao) return { label, erro: "sem PHPSESSID" };
-
-      const panelUrl = sessao.location.startsWith("http")
-        ? sessao.location
-        : `https://app.tutory.com.br${sessao.location}`;
-
-      let sessionCookie = sessao.cookie;
-      const panelRes = await fetch(panelUrl, {
-        headers: { Cookie: sessionCookie, "User-Agent": BROWSER_UA, Accept: "text/html,application/xhtml+xml" },
-        redirect: "follow",
-      });
-      const updated = panelRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
-      if (updated) sessionCookie = updated;
-      const html = await panelRes.text();
-
-      const jsAlunoId = extrairJsAlunoId(html);
-      const adminFlag = extrairJsAlunoAdmin(html);
-      const temSwal = html.includes("Cronograma Replanejado");
-
-      const headers = {
-        Authorization: `Bearer ${primeiro.token}`,
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        Accept: "application/json, */*",
+    // ver-painel → sessão
+    const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
         "X-Requested-With": "XMLHttpRequest",
-        Cookie: sessionCookie,
         Origin: "https://app.tutory.com.br",
-        Referer: panelUrl,
-      };
+        Referer: "https://admin.tutory.com.br/alunos/atraso",
+      },
+      body: `cpf=${encodeURIComponent(primeiro.cpf)}&id=${primeiro.id}&token=${encodeURIComponent(primeiro.token)}&adm_id=${primeiro.admId}`,
+      redirect: "manual",
+    });
+    let sessionCookie = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+    const location = verRes.headers.get("location") ?? "/painel/";
+    const panelUrl = location.startsWith("http") ? location : `https://app.tutory.com.br${location}`;
 
-      const selId = jsAlunoId ?? primeiro.id;
-      const selecionarRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
-        method: "POST",
-        headers,
-        body: `id=${selId}`,
-      });
-      const selecionarData = await selecionarRes.json().catch(() => null);
-      const notifs: NotifEntry[] = Array.isArray((selecionarData as { data?: NotifEntry[] })?.data)
-        ? (selecionarData as { data: NotifEntry[] }).data
-        : [];
+    const panelHeaders = {
+      Cookie: sessionCookie,
+      "User-Agent": BROWSER_UA,
+      Accept: "text/html,application/xhtml+xml",
+      Referer: "https://app.tutory.com.br/intent/ver-painel",
+    };
 
-      // Tentar excluir a primeira notificação com NOT_ID
-      let excluirResult: unknown = "nenhuma-notif";
-      if (notifs.length > 0) {
-        const notifId = notifs[0].NOT_ID ?? notifs[0].id;
-        const excluirRes = await fetch("https://app.tutory.com.br/intent/excluir-notificacao", {
-          method: "POST",
-          headers,
-          body: `id=${selId}&notificacao_id=${notifId}`,
-        });
-        excluirResult = await excluirRes.json().catch(() => null);
-      }
+    // ── 1ª visita ao painel ──
+    const painel1Res = await fetch(panelUrl, { headers: panelHeaders, redirect: "follow" });
+    const updated1 = painel1Res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
+    if (updated1) sessionCookie = updated1;
+    const html1 = await painel1Res.text();
+    const swal1 = html1.includes("Cronograma Replanejado");
 
-      return {
-        label,
-        jsAlunoId,
-        adminFlag,
-        temSwalReplanejado: temSwal,
-        selecionarNotificacoes: { idUsado: selId, data: selecionarData },
-        excluirNotificacao: excluirResult,
-      };
-    }
+    // Aguardar 2 segundos antes da 2ª visita
+    await new Promise((r) => setTimeout(r, 2000));
 
-    const [resultSemAdmId, resultComAdmId] = await Promise.all([
-      inspecionarSessao(semAdmId, "SEM adm_id"),
-      inspecionarSessao(comAdmId, "COM adm_id"),
-    ]);
+    // ── 2ª visita ao painel (mesma sessão) ──
+    const painel2Res = await fetch(panelUrl, {
+      headers: { ...panelHeaders, Cookie: sessionCookie, Referer: panelUrl },
+      redirect: "follow",
+    });
+    const html2 = await painel2Res.text();
+    const swal2 = html2.includes("Cronograma Replanejado");
+
+    // ── Verificar admin list: o aluno ainda está em /alunos/atraso? ──
+    const listaHtml = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", {
+      headers: { Cookie: adminCookie },
+    }).then((r) => r.text());
+    const nomeNaLista = listaHtml.toLowerCase().includes(primeiro.nome.toLowerCase().split(" ")[0]);
+
+    // ── Tela de /painel/config/replanejar-atrasos ──
+    const replanHtml = await fetch("https://app.tutory.com.br/painel/config/replanejar-atrasos", {
+      headers: { Cookie: sessionCookie, "User-Agent": BROWSER_UA, Accept: "text/html,application/xhtml+xml", Referer: panelUrl },
+      redirect: "follow",
+    }).then((r) => r.text());
+    const swalReplan = replanHtml.includes("Cronograma Replanejado");
 
     return NextResponse.json({
       primeiroAluno: { nome: primeiro.nome, id: primeiro.id },
-      semAdmId: resultSemAdmId,
-      comAdmId: resultComAdmId,
+      painel1: { swalAparece: swal1 },
+      painel2: { swalAparece: swal2, interpretacao: swal2 ? "PHP NÃO processou o replan na 1ª visita" : "PHP processou o replan na 1ª visita! ✓" },
+      replanejArAtrasos: { swalAparece: swalReplan },
+      adminList: { nomeAindaNaLista: nomeNaLista },
+      conclusao: swal2
+        ? "Visitação do servidor NÃO dispara o replan — precisamos de outro mecanismo"
+        : "Visitação dispara o replan — automação funciona, usuário deve verificar após alguns minutos",
     });
   }
 
