@@ -158,24 +158,65 @@ export async function GET(req: NextRequest) {
     const adminCookie = loginRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
     if (!adminCookie) return NextResponse.json({ erro: "Login admin falhou", status: loginRes.status });
 
-    // 2. Buscar página de atrasos e encontrar links para app.tutory.com.br
+    // 2. Buscar página de atrasos
     const atrasosHtml = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", {
       headers: { Cookie: adminCookie },
     }).then(r => r.text());
 
-    // Procurar qualquer link para app.tutory ou links de painel
-    const appLinks = [...atrasosHtml.matchAll(/https?:\/\/app\.tutory\.com\.br[^\s"'<>]*/g)].map(m => m[0]).slice(0, 5);
-    const painelLinks = [...atrasosHtml.matchAll(/href="([^"]*(?:painel|panel|ver|abrir)[^"]*)"/gi)].map(m => m[1]).slice(0, 5);
-    const windowOpenLinks = [...atrasosHtml.matchAll(/window\.open\(['"]([^'"]+)['"]/gi)].map(m => m[1]).slice(0, 5);
+    // Pegar primeiro bloco completo (até o próximo student-list-item)
+    const blocos = atrasosHtml.split('class="student-list-item"');
+    const primeiroBloco = blocos[1]?.slice(0, 3000) ?? "";
 
-    // 3. Pegar primeiro bloco de aluno e ver HTML completo (para encontrar o botão "Ver Painel")
-    const primeiroBloco = atrasosHtml.split('class="student-list-item"')[1]?.slice(0, 1500) ?? "";
+    // Extrair sub_id ou id dos links de ver-painel
+    const verPainelLinks = [...atrasosHtml.matchAll(/ver-painel[^"'<>\s]*/g)].map(m => m[0]).slice(0, 3);
+    const dataAttrs = [...primeiroBloco.matchAll(/data-[\w-]+=["']([^"']+)["']/g)].map(m => `${m[0]}`).slice(0, 10);
+    const onclickAttrs = [...primeiroBloco.matchAll(/onclick="([^"]+)"/g)].map(m => m[1]).slice(0, 5);
+
+    // 3. Tentar chamar ver-painel com sub_id do primeiro aluno atrasado
+    // Extrair o tutoryId do primeiro aluno
+    const primeiroAid = primeiroBloco.match(/aid=(\d+)/)?.[1] ??
+                        primeiroBloco.match(/sub_id=(\d+)/)?.[1] ??
+                        primeiroBloco.match(/data-id="(\d+)"/)?.[1];
+
+    let verPainelTeste = null;
+    if (primeiroAid) {
+      const payloads = [
+        `sub_id=${primeiroAid}`,
+        `id=${primeiroAid}`,
+        `aid=${primeiroAid}`,
+      ];
+      verPainelTeste = await Promise.all(payloads.map(async (body) => {
+        const r = await fetch("https://app.tutory.com.br/intent/ver-painel", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest",
+            Cookie: adminCookie,
+            Origin: "https://app.tutory.com.br",
+            Referer: "https://admin.tutory.com.br/alunos/atraso",
+          },
+          body,
+          redirect: "manual",
+        });
+        const respBody = await r.text();
+        const setCookie = r.headers.get("set-cookie") ?? "";
+        return {
+          body,
+          status: r.status,
+          phpsessidApp: setCookie.match(/PHPSESSID=[^;]+/)?.[0] ?? null,
+          location: r.headers.get("location"),
+          respPreview: respBody.slice(0, 200),
+        };
+      }));
+    }
 
     return NextResponse.json({
       adminLoginOk: true,
-      appLinks,
-      painelLinks,
-      windowOpenLinks,
+      verPainelLinks,
+      dataAttrs,
+      onclickAttrs,
+      primeiroAidEncontrado: primeiroAid,
+      verPainelTeste,
       primeiroBlocoHtml: primeiroBloco,
     });
   }
