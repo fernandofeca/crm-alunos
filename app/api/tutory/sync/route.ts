@@ -60,10 +60,10 @@ function isAtivo(aluno: TutoryAluno): boolean {
 }
 
 // Returns map of email (lowercase) -> diasAtraso, plus diagnostic info
-async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, number>; debug: string }> {
+async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, number>; debug: string; ok: boolean }> {
   const map = new Map<string, number>();
   try {
-    if (!cookie) return { map, debug: "Sem cookie de sessão" };
+    if (!cookie) return { map, debug: "Sem cookie de sessão", ok: false };
 
     function parsePage(html: string) {
       const stripTags = (s: string) => s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
@@ -91,7 +91,7 @@ async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, numbe
     }).then((r) => r.text());
 
     if (firstHtml.includes('document.location.href = "/login"')) {
-      return { map, debug: "Cookie inválido — página redirecionou para login" };
+      return { map, debug: "Cookie inválido — página redirecionou para login", ok: false };
     }
 
     parsePage(firstHtml);
@@ -112,9 +112,10 @@ async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, numbe
       await Promise.all(batch);
     }
 
-    return { map, debug: `OK — ${map.size} aluno(s) com atraso em ${totalPages} página(s)` };
+    // ok=true mesmo com 0 resultados — significa que a página carregou normalmente
+    return { map, debug: `OK — ${map.size} aluno(s) com atraso em ${totalPages} página(s)`, ok: true };
   } catch (e) {
-    return { map, debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
+    return { map, debug: `Erro: ${e instanceof Error ? e.message : String(e)}`, ok: false };
   }
 }
 
@@ -234,7 +235,7 @@ async function executarSync() {
 
     const [
       { alunos: tutoryAlunos, paginacaoDebug, primeiroAlunoKeys },
-      { map: diasAtrasoMap, debug: diasAtrasoDebug },
+      { map: diasAtrasoMap, debug: diasAtrasoDebug, ok: diasAtrasoOk },
       { map: questoesMap, debug: questoesDebug },
     ] = await Promise.all([
       fetchTutoryAlunos(apiHeaders),
@@ -302,12 +303,14 @@ async function executarSync() {
 
     // 2. Update diasAtraso for ALL CRM students based on scraped atraso page
     //    (independent of listar-alunos — covers older students too)
-    if (diasAtrasoMap.size > 0) {
+    //    ok=true means the page loaded correctly (even with 0 results = all delays cleared)
+    //    ok=false means login failed or network error — skip to avoid wiping valid data
+    if (diasAtrasoOk) {
       // Students with delays: set their diasAtraso
       for (const [email, dias] of diasAtrasoMap) {
         await prisma.aluno.updateMany({ where: { email }, data: { diasAtraso: dias } });
       }
-      // All other active students: reset to 0
+      // All other active students: reset to 0 (including when map is empty = no delays at all)
       await prisma.aluno.updateMany({
         where: { ativo: true, email: { notIn: [...diasAtrasoMap.keys()] } },
         data: { diasAtraso: 0 },
