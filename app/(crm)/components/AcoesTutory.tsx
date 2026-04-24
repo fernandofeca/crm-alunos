@@ -42,6 +42,15 @@ const ACOES: Acao[] = [
     corHover: "hover:bg-indigo-700",
     icone: "📅",
   },
+  {
+    label: "Relatório de Coaching",
+    descricao: "Envia Estudos + Desempenho em Questões (4 meses · semanal) para todos os alunos",
+    url: "/api/tutory/relatorio-coaching",
+    method: "POST",
+    cor: "bg-teal-600 text-white",
+    corHover: "hover:bg-teal-700",
+    icone: "📊",
+  },
 ];
 
 function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
@@ -51,6 +60,8 @@ function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
   if (typeof dados.salvos === "number") resumo.push(`${dados.salvos} alunos salvos`);
   if (typeof dados.replanejados === "number") resumo.push(`${dados.replanejados} replanejados`);
   if (typeof dados.total === "number") resumo.push(`${dados.total} alunos`);
+  if (typeof dados.totalAlunos === "number") resumo.push(`${dados.totalAlunos} alunos`);
+  if (typeof dados.emailsEnviados === "number") resumo.push(`${dados.emailsEnviados} emails enviados`);
   if (typeof dados.semUrl === "number" && dados.semUrl > 0)
     resumo.push(`⚠️ ${dados.semUrl} sem URL de painel`);
   if (typeof dados.executadoEm === "string") resumo.push(dados.executadoEm as string);
