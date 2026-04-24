@@ -56,6 +56,7 @@ model Aluno {
   tarefas          Tarefa[]
   eventos          Evento[]
   conquistas       Conquista[]
+  snapshotsAtraso  SnapshotAtraso[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 }
@@ -117,6 +118,19 @@ model Evento {
   userId      String
   user        User     @relation(fields: [userId], references: [id])
   createdAt   DateTime @default(now())
+}
+
+model SnapshotAtraso {
+  id         String   @id @default(cuid())
+  semana     DateTime // Data da sexta-feira do snapshot
+  alunoId    String?
+  aluno      Aluno?   @relation(fields: [alunoId], references: [id], onDelete: SetNull)
+  nome       String
+  email      String
+  diasAtraso Int
+  criadoEm   DateTime @default(now())
+
+  @@unique([semana, email])
 }
 
 model Conquista {

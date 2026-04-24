@@ -28,6 +28,9 @@ export default function Navbar() {
           <Link href="/alunos-a-vencer" className="text-slate-600 hover:text-blue-600 transition">
             Alunos a Vencer
           </Link>
+          <Link href="/historico-atrasos" className="text-slate-600 hover:text-blue-600 transition">
+            Histórico de Atrasos
+          </Link>
           <Link href="/agenda" className="text-slate-600 hover:text-blue-600 transition">
             Agenda
           </Link>
