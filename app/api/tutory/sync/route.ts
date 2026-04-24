@@ -96,7 +96,7 @@ async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, numbe
 
     parsePage(firstHtml);
 
-    const totalPagesMatch = firstHtml.match(/href="\?p=(\d+)">Última/);
+    const totalPagesMatch = firstHtml.match(/\?p=(\d+)[^"]*">Última/);
     const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1], 10) : 1;
 
     // Fetch remaining pages in parallel (batches of 5)
