@@ -67,41 +67,32 @@ export async function GET(req: NextRequest) {
     .filter((s) => s.includes("relatorio") || s.includes("coaching") || s.includes("lote") || s.includes("dispararEmails"))
     .join("\n\n---\n\n");
 
-  // Extrai array de alunos com tokens — padrão: {id: X, token: 'Y'} ou similar
-  const tokenMatches = [...html.matchAll(/\{\s*id\s*:\s*(\d+)\s*,\s*token\s*:\s*['"]([^'"]+)['"]/g)].map(
-    (m) => ({ id: m[1], token: m[2] })
-  );
-
-  // Alternativa: data-token em elementos HTML
-  const dataTokens = [...html.matchAll(/data-id=["'](\d+)["'][^>]*data-token=["']([^"']+)["']/g)].map(
-    (m) => ({ id: m[1], token: m[2] })
-  );
-  const dataTokensAlt = [...html.matchAll(/data-token=["']([^"']+)["'][^>]*data-id=["'](\d+)["']/g)].map(
-    (m) => ({ id: m[2], token: m[1] })
-  );
-
-  // Busca qualquer variável JS que pareça ser lista de alunos
-  const varAlunosMatch = inlineScriptCompleto.match(/(?:var|let|const)\s+(\w*[Aa]luno\w*|urls\w*)\s*=\s*(\[[\s\S]{0,3000}\])/);
-  const varAlunos = varAlunosMatch ? { nome: varAlunosMatch[1], valor: varAlunosMatch[2] } : null;
-
-  // Trechos em volta de "token" no script
-  const tokenSnippets: string[] = [];
-  let idx = 0;
-  while ((idx = inlineScriptCompleto.indexOf("token", idx)) >= 0) {
-    tokenSnippets.push(inlineScriptCompleto.slice(Math.max(0, idx - 80), idx + 120));
-    idx += 5;
-    if (tokenSnippets.length >= 10) break;
+  // Trecho bruto em volta de "check" / "checkbox" / "input" na tabela
+  const rawCheckbox: string[] = [];
+  const checkIdx = html.indexOf("relatorio-aluno-check");
+  if (checkIdx >= 0) {
+    rawCheckbox.push(html.slice(Math.max(0, checkIdx - 200), checkIdx + 600));
   }
+  // Também em volta de qualquer <input type="checkbox"
+  const cbIdx = html.indexOf('type="checkbox"');
+  if (cbIdx >= 0) rawCheckbox.push(html.slice(Math.max(0, cbIdx - 100), cbIdx + 400));
+
+  // Todos os data-id encontrados em qualquer elemento
+  const allDataIds = [...html.matchAll(/data-id=["'](\d+)["']/g)].map((m) => m[1]).slice(0, 20);
+
+  // Todos os <input> com name ou class relacionados a aluno/check
+  const inputs = [...html.matchAll(/<input[^>]*(?:aluno|check|relatorio)[^>]*>/gi)].map((m) => m[0]).slice(0, 10);
+
+  // Trecho da tabela (primeiros 3000 chars após <table)
+  const tableIdx = html.toLowerCase().indexOf("<table");
+  const tableSnippet = tableIdx >= 0 ? html.slice(tableIdx, tableIdx + 3000) : "(sem tabela)";
 
   return NextResponse.json({
     pageSize: html.length,
-    forms,
-    botoes: botoes.slice(0, 5), // só os primeiros para não poluir
-    inlineScriptCompleto,
-    tokenMatches: tokenMatches.slice(0, 5),
-    dataTokens: dataTokens.slice(0, 5),
-    dataTokensAlt: dataTokensAlt.slice(0, 5),
-    varAlunos,
-    tokenSnippets,
+    allDataIds,
+    inputs,
+    rawCheckbox,
+    tableSnippet,
+    inlineScriptCompleto: inlineScriptCompleto.slice(0, 500),
   });
 }
