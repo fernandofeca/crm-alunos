@@ -80,9 +80,9 @@ async function scraparFormularios(adminCookie: string): Promise<AlunoForm[]> {
   return result;
 }
 
-async function replanejamentoAluno(aluno: AlunoForm): Promise<{ nome: string; id: string; status: number | string }> {
+async function replanejamentoAluno(aluno: AlunoForm): Promise<{ nome: string; id: string; status: number | string; data?: unknown }> {
   try {
-    // 1. ver-painel → obtém PHPSESSID do app.tutory.com.br
+    // 1. ver-painel → obtém PHPSESSID + Location do redirect
     const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
       method: "POST",
       headers: {
@@ -96,8 +96,21 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<{ nome: string; id
     });
 
     const appPhpsessid = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+    const location = verRes.headers.get("location") ?? "https://app.tutory.com.br/painel/";
 
-    // 2. selecionar-notificacoes com a sessão obtida
+    // 2. Seguir o redirect — carrega a página do painel, que cria a notificação server-side
+    if (appPhpsessid) {
+      await fetch(location.startsWith("http") ? location : `https://app.tutory.com.br${location}`, {
+        method: "GET",
+        headers: {
+          Cookie: appPhpsessid,
+          Accept: "text/html,application/xhtml+xml",
+          Referer: "https://app.tutory.com.br/intent/ver-painel",
+        },
+      });
+    }
+
+    // 3. selecionar-notificacoes — processa a notificação de replanejamento criada
     const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
       method: "POST",
       headers: {
@@ -111,7 +124,8 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<{ nome: string; id
       body: `id=${aluno.id}`,
     });
 
-    return { nome: aluno.nome, id: aluno.id, status: notifRes.status };
+    const notifJson = await notifRes.json().catch(() => null);
+    return { nome: aluno.nome, id: aluno.id, status: notifRes.status, data: notifJson };
   } catch (e) {
     return { nome: aluno.nome, id: aluno.id, status: String(e) };
   }
@@ -168,41 +182,12 @@ export async function GET(req: NextRequest) {
     const primeiro = alunos[0];
     if (!primeiro) return NextResponse.json({ error: "Nenhum aluno na lista" });
 
-    // Testar ver-painel
-    const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "X-Requested-With": "XMLHttpRequest",
-        Origin: "https://app.tutory.com.br",
-        Referer: "https://admin.tutory.com.br/alunos/atraso",
-      },
-      body: `cpf=${encodeURIComponent(primeiro.cpf)}&id=${primeiro.id}&token=${encodeURIComponent(primeiro.token)}&adm_id=${primeiro.admId}`,
-      redirect: "manual",
-    });
-
-    const appPhpsessid = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
-    const verBody = await verRes.text();
-
-    // Testar selecionar-notificacoes
-    const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${primeiro.token}`,
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        ...(appPhpsessid ? { Cookie: appPhpsessid } : {}),
-        Origin: "https://app.tutory.com.br",
-        Referer: "https://app.tutory.com.br/painel/",
-      },
-      body: `id=${primeiro.id}`,
-    });
-    const notifBody = await notifRes.text();
+    const resultado = await replanejamentoAluno(primeiro);
 
     return NextResponse.json({
       totalAlunos: alunos.length,
       primeiroAluno: { nome: primeiro.nome, id: primeiro.id, cpf: primeiro.cpf.slice(0, 3) + "****" },
-      verPainel: { status: verRes.status, phpsessidObtido: !!appPhpsessid, bodyPreview: verBody.slice(0, 300) },
-      selecionarNotificacoes: { status: notifRes.status, body: notifBody.slice(0, 300) },
+      resultado,
     });
   }
 
