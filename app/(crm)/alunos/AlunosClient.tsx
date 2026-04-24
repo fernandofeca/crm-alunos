@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 type Contato = {
@@ -84,20 +84,24 @@ export default function AlunosClient({
   totalInicial: number;
 }) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const filtroInicial = searchParams.get("filtro") ?? "";
   const filtrosIniciais = filtroInicial ? filtroInicial.split(",").filter(Boolean) : [];
   const planoInicial = searchParams.get("planoTipo") ? searchParams.get("planoTipo")!.split(",").filter(Boolean) : [];
+  const concursoInicial = searchParams.get("concurso") ? searchParams.get("concurso")!.split(",").filter(Boolean) : [];
+  const qInicial = searchParams.get("q") ?? "";
+  const ativoInicial = searchParams.get("ativo") !== "false";
 
   const [alunos, setAlunos] = useState<Aluno[]>(initialAlunos);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(qInicial);
   const [filtros, setFiltros] = useState<string[]>(filtrosIniciais);
-  const [concursoFiltro, setConcursoFiltro] = useState<string[]>([]);
+  const [concursoFiltro, setConcursoFiltro] = useState<string[]>(concursoInicial);
   const [concursoDropdownOpen, setConcursoDropdownOpen] = useState(false);
   const concursoDropdownRef = useRef<HTMLDivElement>(null);
   const [planoFiltro, setPlanoFiltro] = useState<string[]>(planoInicial);
   const [planoDropdownOpen, setPlanoDropdownOpen] = useState(false);
   const planoDropdownRef = useRef<HTMLDivElement>(null);
-  const [apenasAtivos, setApenasAtivos] = useState(true);
+  const [apenasAtivos, setApenasAtivos] = useState(ativoInicial);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(totalInicial);
@@ -110,7 +114,7 @@ export default function AlunosClient({
   const [savingContato, setSavingContato] = useState(false);
 
   useEffect(() => {
-    buscar("", filtrosIniciais, [], planoInicial, true, 0, null);
+    buscar(qInicial, filtrosIniciais, concursoInicial, planoInicial, ativoInicial, 0, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -146,9 +150,12 @@ export default function AlunosClient({
     if (concursoList.length > 0) params.set("concurso", concursoList.join(","));
     if (planos.length > 0) params.set("planoTipo", planos.join(","));
     if (ativos) params.set("ativo", "true");
+    else params.set("ativo", "false");
     const ord = sortToParam(s);
     if (ord) params.set("ordenar", ord);
-    params.set("page", String(p));
+    if (p > 0) params.set("page", String(p));
+    // Persiste filtros na URL para o botão Voltar restaurar tudo
+    router.replace(`/alunos?${params.toString()}`, { scroll: false });
     const res = await fetch(`/api/alunos?${params}`);
     const data = await res.json();
     setAlunos(data.alunos);
