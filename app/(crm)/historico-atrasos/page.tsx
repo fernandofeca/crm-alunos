@@ -48,7 +48,7 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
           NOT: { aluno: { ativo: false } },
           ...(planoParam ? { aluno: { planoTipo: planoParam } } : {}),
         },
-        include: { aluno: { select: { id: true, whatsapp: true, planoTipo: true, tutoryId: true, concurso: true } } },
+        include: { aluno: { select: { id: true, whatsapp: true, planoTipo: true, tutoryId: true, concurso: true, dataInicio: true } } },
         orderBy: { diasAtraso: "desc" },
       })
     : [];
@@ -157,17 +157,23 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
                       <tr key={s.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
                         <td className="px-4 py-3">
-                          {s.aluno?.tutoryId ? (
-                            <a
-                              href={`https://admin.tutory.com.br/alunos/index?aid=${s.aluno.tutoryId}`}
-                              target="_blank" rel="noopener noreferrer"
-                              className="font-medium text-blue-600 hover:underline"
-                            >
-                              {s.nome}
-                            </a>
-                          ) : (
-                            <span className="font-medium text-slate-700">{s.nome}</span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {s.aluno?.tutoryId ? (
+                              <a
+                                href={`https://admin.tutory.com.br/alunos/index?aid=${s.aluno.tutoryId}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="font-medium text-blue-600 hover:underline"
+                              >
+                                {s.nome}
+                              </a>
+                            ) : (
+                              <span className="font-medium text-slate-700">{s.nome}</span>
+                            )}
+                            {s.aluno?.dataInicio && semanaAtual &&
+                              (semanaAtual.getTime() - new Date(s.aluno.dataInicio).getTime()) <= 30 * 24 * 60 * 60 * 1000 && (
+                              <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium leading-none">Novo</span>
+                            )}
+                          </div>
                           <div className="text-xs text-slate-400">{s.email}</div>
                         </td>
                         <td className="px-4 py-3 text-slate-500 text-xs">
