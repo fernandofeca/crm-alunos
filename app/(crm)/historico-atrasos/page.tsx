@@ -47,7 +47,7 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
           semana: semanaAtual,
           ...(planoParam ? { aluno: { planoTipo: planoParam } } : {}),
         },
-        include: { aluno: { select: { id: true, whatsapp: true, planoTipo: true } } },
+        include: { aluno: { select: { id: true, whatsapp: true, planoTipo: true, tutoryId: true } } },
         orderBy: { diasAtraso: "desc" },
       })
     : [];
@@ -155,10 +155,14 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
                       <tr key={s.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
                         <td className="px-4 py-3">
-                          {s.aluno ? (
-                            <Link href={`/alunos/${s.aluno.id}`} className="font-medium text-blue-600 hover:underline">
+                          {s.aluno?.tutoryId ? (
+                            <a
+                              href={`https://admin.tutory.com.br/alunos/index?aid=${s.aluno.tutoryId}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="font-medium text-blue-600 hover:underline"
+                            >
                               {s.nome}
-                            </Link>
+                            </a>
                           ) : (
                             <span className="font-medium text-slate-700">{s.nome}</span>
                           )}
