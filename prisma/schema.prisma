@@ -46,6 +46,11 @@ model Aluno {
   dataInicio          DateTime?
   acompanharDePerto   Boolean  @default(false)
   ultimoContatoData   DateTime?
+  dataNascimento      DateTime?
+  cidade              String   @default("")
+  estado              String   @default("")
+  endereco            String   @default("")
+  bio                 String   @default("")
   disciplinas      Disciplina[]
   contatos         Contato[]
   tarefas          Tarefa[]
