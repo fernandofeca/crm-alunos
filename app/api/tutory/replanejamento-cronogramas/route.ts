@@ -1,20 +1,21 @@
 /**
  * Replanejamento de Cronogramas
  *
- * Fluxo por aluno:
- *  1. POST ver-painel (cpf + id + token + adm_id) → PHPSESSID do app.tutory.com.br
- *  2. GET /painel/config/replanejar-atrasos com esse PHPSESSID
- *     → a página PHP executa o replanejamento do cronograma server-side
+ * Hipótese atual: o popup "Cronograma Replanejado" é gerado pelo JS externo
+ * do Tutory. Precisamos encontrar qual endpoint o botão OK chama.
  *
- * Debug (GET ?key=cg-bulk-2026&debug=1):
- *  → mostra HTML de /painel/config/replanejar-atrasos do 1º aluno atrasado
- *  → permite ajustar se for necessário fazer POST em vez de GET
+ * Estratégia do debug:
+ *  1. ver-painel → PHPSESSID
+ *  2. Chamar selecionar-notificacoes SEM visitar /painel/ antes (ver se retorna dados)
+ *  3. Extrair URLs de scripts JS do HTML do painel
+ *  4. Baixar o JS do Tutory e buscar "replan", "selecionar", "cronograma", "intent"
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 
-const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
 
 async function getAdminCookie(): Promise<string> {
   const account = process.env.TUTORY_ACCOUNT ?? "";
@@ -52,12 +53,10 @@ async function scraparFormularios(adminCookie: string): Promise<AlunoForm[]> {
       const parts = searchMatch[1].trim().split(" ");
       const email = parts[parts.length - 1].toLowerCase();
       const nome = parts.slice(0, -1).join(" ").trim();
-
       const id    = block.match(/name="id"\s+value="(\d+)"/)?.[1] ?? "";
       const cpf   = block.match(/name="cpf"\s+value="([^"]+)"/)?.[1] ?? "";
       const token = block.match(/name="token"\s+value="([^"]+)"/)?.[1] ?? "";
       const admId = block.match(/name="adm_id"\s+value="(\d+)"/)?.[1] ?? "";
-
       if (id && cpf && token && admId) {
         result.push({ id, cpf, token, admId, nome, email });
       }
@@ -75,12 +74,10 @@ async function scraparFormularios(adminCookie: string): Promise<AlunoForm[]> {
   const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1], 10) : 1;
 
   for (let start = 2; start <= totalPages; start += 5) {
-    const batch = [];
+    const batch: Promise<void>[] = [];
     for (let p = start; p < start + 5 && p <= totalPages; p++) {
       batch.push(
-        fetch(`https://admin.tutory.com.br/alunos/atraso?p=${p}`, {
-          headers: { Cookie: adminCookie },
-        })
+        fetch(`https://admin.tutory.com.br/alunos/atraso?p=${p}`, { headers: { Cookie: adminCookie } })
           .then((r) => r.text())
           .then(parsePage)
       );
@@ -91,7 +88,6 @@ async function scraparFormularios(adminCookie: string): Promise<AlunoForm[]> {
   return result;
 }
 
-/** Obtém PHPSESSID do app.tutory.com.br para o aluno via ver-painel */
 async function obterSessaoAluno(aluno: AlunoForm): Promise<string | null> {
   const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
     method: "POST",
@@ -104,33 +100,121 @@ async function obterSessaoAluno(aluno: AlunoForm): Promise<string | null> {
     body: `cpf=${encodeURIComponent(aluno.cpf)}&id=${aluno.id}&token=${encodeURIComponent(aluno.token)}&adm_id=${aluno.admId}`,
     redirect: "manual",
   });
-
   return verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? null;
+}
+
+/** Extrai URLs de scripts JS do HTML — preferindo scripts do Tutory */
+function extrairScriptUrls(html: string): string[] {
+  const urls: string[] = [];
+  for (const m of html.matchAll(/<script[^>]+src="([^"]+)"/gi)) {
+    const url = m[1];
+    if (url.includes("tutory") || url.includes("/assets/js") || url.includes("/js/")) {
+      urls.push(url.startsWith("http") ? url : `https://app.tutory.com.br${url}`);
+    }
+  }
+  return urls;
+}
+
+/** Busca padrões relevantes em um arquivo JS */
+function analisarJs(js: string): Record<string, string[]> {
+  const resultado: Record<string, string[]> = {};
+
+  // Linhas com "replan" ou "cronograma"
+  const linhasReplan = js.split("\n")
+    .filter((l) => /replan|cronograma/i.test(l))
+    .map((l) => l.trim().slice(0, 300));
+  if (linhasReplan.length) resultado.replan = linhasReplan.slice(0, 10);
+
+  // Linhas com "selecionar"
+  const linhasSelecionar = js.split("\n")
+    .filter((l) => /selecionar/i.test(l))
+    .map((l) => l.trim().slice(0, 300));
+  if (linhasSelecionar.length) resultado.selecionar = linhasSelecionar.slice(0, 10);
+
+  // Todos os endpoints intent/
+  const intents = [...new Set([...js.matchAll(/intent\/[\w-]+/gi)].map((m) => m[0]))];
+  if (intents.length) resultado.intents = intents;
+
+  // Chamadas AJAX/fetch com /intent/
+  const ajaxCalls = js.split("\n")
+    .filter((l) => /intent\//i.test(l) && /post|fetch|ajax|url/i.test(l))
+    .map((l) => l.trim().slice(0, 300));
+  if (ajaxCalls.length) resultado.ajaxCalls = ajaxCalls.slice(0, 10);
+
+  return resultado;
 }
 
 interface ReplanejamentoResult {
   nome: string;
   id: string;
   status: number | string;
+  notifIds?: string[];
   replanStatus?: number | string;
 }
 
 async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResult> {
   try {
-    // 1. Obter sessão do aluno no app
+    // 1. Obter sessão do aluno
     const sessionCookie = await obterSessaoAluno(aluno);
     if (!sessionCookie) {
       return { nome: aluno.nome, id: aluno.id, status: "sem-sessão" };
     }
 
-    // 2. Visitar /painel/config/replanejar-atrasos → PHP executa replanejamento
+    // 2. Chamar selecionar-notificacoes com tutoryId → obter lista de notificações pendentes
+    const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${aluno.token}`,
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Accept: "application/json, */*",
+        Cookie: sessionCookie,
+        Origin: "https://app.tutory.com.br",
+        Referer: "https://app.tutory.com.br/painel/",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: `id=${aluno.id}`,
+    });
+    const notifData = await notifRes.json().catch(() => null) as { data?: Array<{ id: number | string }> } | null;
+
+    const notifIds: string[] =
+      Array.isArray(notifData?.data) && notifData!.data.length > 0
+        ? notifData!.data.map((n) => String(n.id))
+        : [];
+
+    // 3a. Se encontrou IDs de notificação: confirmar cada um
+    if (notifIds.length > 0) {
+      const confirmacoes = await Promise.all(
+        notifIds.map((nid) =>
+          fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${aluno.token}`,
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+              Cookie: sessionCookie,
+              Origin: "https://app.tutory.com.br",
+              Referer: "https://app.tutory.com.br/painel/",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            body: `id=${nid}`,
+          }).then((r) => r.status)
+        )
+      );
+      return {
+        nome: aluno.nome,
+        id: aluno.id,
+        status: "ok",
+        notifIds,
+        replanStatus: confirmacoes[0],
+      };
+    }
+
+    // 3b. Fallback: visitar /painel/config/replanejar-atrasos
     const replanRes = await fetch("https://app.tutory.com.br/painel/config/replanejar-atrasos", {
       method: "GET",
       headers: {
         Cookie: sessionCookie,
         "User-Agent": BROWSER_UA,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9",
+        Accept: "text/html,application/xhtml+xml",
         Referer: "https://app.tutory.com.br/painel/",
       },
       redirect: "follow",
@@ -139,7 +223,8 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResu
     return {
       nome: aluno.nome,
       id: aluno.id,
-      status: "ok",
+      status: "ok-fallback",
+      notifIds: [],
       replanStatus: replanRes.status,
     };
   } catch (e) {
@@ -173,23 +258,22 @@ async function executarReplanejamento() {
     if (i + 3 < alunos.length) await new Promise((r) => setTimeout(r, 400));
   }
 
-  const sucessos = resultados.filter(
-    (r) => r.status === "ok" && typeof r.replanStatus === "number" && r.replanStatus < 400
-  ).length;
+  const comNotif = resultados.filter((r) => (r.notifIds?.length ?? 0) > 0).length;
+  const fallback = resultados.filter((r) => r.status === "ok-fallback").length;
+  const falhas   = resultados.filter((r) => r.status !== "ok" && r.status !== "ok-fallback");
 
   return NextResponse.json({
     ok: true,
     total: alunos.length,
-    replanejados: sucessos,
-    falhas: resultados.filter(
-      (r) => r.status !== "ok" || typeof r.replanStatus !== "number" || r.replanStatus >= 400
-    ),
+    comNotificacoes: comNotif,
+    fallback,
+    falhas,
     executadoEm: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
   });
 }
 
-// GET ?key=cg-bulk-2026&debug=1 — mostra HTML de /painel/config/replanejar-atrasos do 1º aluno
-// GET ?key=cg-bulk-2026          — cron (background)
+// GET ?key=cg-bulk-2026&debug=1 → inspeciona JS do Tutory para achar endpoint do OK
+// GET ?key=cg-bulk-2026          → cron (background)
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
@@ -200,77 +284,62 @@ export async function GET(req: NextRequest) {
 
     const alunos = await scraparFormularios(adminCookie);
     const primeiro = alunos[0];
-    if (!primeiro) return NextResponse.json({ error: "Nenhum aluno na lista de atrasos" });
+    if (!primeiro) return NextResponse.json({ error: "Nenhum aluno na lista" });
 
-    // Passo 1: obter sessão
+    // Passo 1: ver-painel → PHPSESSID
     const sessionCookie = await obterSessaoAluno(primeiro);
+    if (!sessionCookie) return NextResponse.json({ error: "ver-painel sem PHPSESSID" });
 
-    if (!sessionCookie) {
-      return NextResponse.json({ error: "ver-painel não retornou PHPSESSID" });
-    }
+    // Passo 2: selecionar-notificacoes SEM visitar /painel/ antes
+    const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${primeiro.token}`,
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Accept: "application/json, */*",
+        Cookie: sessionCookie,
+        Origin: "https://app.tutory.com.br",
+        Referer: "https://app.tutory.com.br/painel/",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: `id=${primeiro.id}`,
+    });
+    const notifData = await notifRes.json().catch(() => "PARSE_ERROR");
 
-    // Passo 2: GET /painel/config/replanejar-atrasos
-    const replanRes = await fetch("https://app.tutory.com.br/painel/config/replanejar-atrasos", {
-      method: "GET",
+    // Passo 3: buscar scripts JS no HTML do painel
+    const panelHtml = await fetch("https://app.tutory.com.br/painel/", {
       headers: {
         Cookie: sessionCookie,
         "User-Agent": BROWSER_UA,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9",
-        Referer: "https://app.tutory.com.br/painel/",
+        Accept: "text/html,application/xhtml+xml",
       },
-      redirect: "manual", // manual para ver redirect
-    });
+      redirect: "follow",
+    }).then((r) => r.text());
 
-    const replanLocation = replanRes.headers.get("location") ?? null;
-    const replanCookie = replanRes.headers.get("set-cookie") ?? null;
-    const replanHtml = await replanRes.text();
+    const scriptUrls = extrairScriptUrls(panelHtml);
 
-    // Se redirecionar, seguir
-    let finalHtml = replanHtml;
-    let finalStatus = replanRes.status;
-    if (replanRes.status >= 300 && replanRes.status < 400 && replanLocation) {
-      const dest = replanLocation.startsWith("http")
-        ? replanLocation
-        : `https://app.tutory.com.br${replanLocation}`;
-      const finalRes = await fetch(dest, {
-        headers: { Cookie: sessionCookie, "User-Agent": BROWSER_UA },
-        redirect: "follow",
-      });
-      finalHtml = await finalRes.text();
-      finalStatus = finalRes.status;
+    // Passo 4: baixar e analisar os JS files
+    const jsAnalise: Record<string, unknown> = {};
+    for (const url of scriptUrls.slice(0, 5)) {
+      try {
+        const js = await fetch(url, { headers: { "User-Agent": BROWSER_UA } }).then((r) => r.text());
+        jsAnalise[url] = analisarJs(js);
+      } catch {
+        jsAnalise[url] = "FETCH_ERROR";
+      }
     }
 
-    // Buscar indicadores de sucesso no HTML
-    const sucessoIndicadores = [
-      /sucesso|success|replanejado|atualizado|concluído/i.test(finalHtml),
-    ];
+    // Passo 5: analisar também o HTML do painel (scripts inline)
+    const inlineScripts = [...panelHtml.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi)]
+      .map((m) => m[1])
+      .filter((s) => /intent|replan|selecionar/i.test(s));
 
     return NextResponse.json({
       primeiroAluno: { nome: primeiro.nome, id: primeiro.id },
-      sessionObtida: true,
-      replanRequest: {
-        status: replanRes.status,
-        location: replanLocation,
-        setCookie: replanCookie,
-      },
-      finalStatus,
-      sucessoNoHtml: sucessoIndicadores[0],
-      // Primeiros 2000 chars do HTML final
-      htmlPreview: finalHtml.slice(0, 2000),
-      // Todos os forms na página
-      forms: [...finalHtml.matchAll(/<form[^>]*action="([^"]*)"[^>]*>/gi)].map((m) => m[1]),
-      // Contexto ao redor de palavras-chave
-      contextos: (() => {
-        const hits: string[] = [];
-        for (const kw of ["replan", "sucesso", "cronograma", "atraso"]) {
-          const idx = finalHtml.toLowerCase().indexOf(kw);
-          if (idx >= 0) {
-            hits.push(finalHtml.slice(Math.max(0, idx - 50), idx + 200));
-          }
-        }
-        return hits;
-      })(),
+      selecionarSemPainel: { status: notifRes.status, data: notifData },
+      scriptUrls,
+      jsAnalise,
+      inlineScriptsComIntent: inlineScripts.map((s) => s.slice(0, 500)),
     });
   }
 
