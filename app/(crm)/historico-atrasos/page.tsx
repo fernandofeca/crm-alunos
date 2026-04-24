@@ -3,6 +3,8 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
+const PLANOS = ["Mentoria da Posse", "Mentoria Diamante", "Cronograma Ouro", "Cronograma Outros"];
+
 function fmtData(d: Date) {
   return new Date(d).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
 }
@@ -14,8 +16,15 @@ function corDias(dias: number) {
   return "bg-yellow-50 text-yellow-700";
 }
 
-export default async function HistoricoAtrasosPage({ searchParams }: { searchParams: Promise<{ semana?: string }> }) {
-  const { semana: semanaParam } = await searchParams;
+function buildHref(semanaIso: string | undefined, plano: string | undefined) {
+  const params = new URLSearchParams();
+  if (semanaIso) params.set("semana", semanaIso);
+  if (plano) params.set("plano", plano);
+  return `/historico-atrasos?${params.toString()}`;
+}
+
+export default async function HistoricoAtrasosPage({ searchParams }: { searchParams: Promise<{ semana?: string; plano?: string }> }) {
+  const { semana: semanaParam, plano: planoParam } = await searchParams;
 
   // All distinct semanas (Fridays with snapshots)
   const semanas = await prisma.snapshotAtraso.findMany({
@@ -29,9 +38,15 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
     ? new Date(semanaParam)
     : semanas[0]?.semana ?? null;
 
+  const semanaIso = semanaAtual?.toISOString();
+
+  // Filter by plano via aluno relation (students without CRM link are excluded when plano filter active)
   const snapshots = semanaAtual
     ? await prisma.snapshotAtraso.findMany({
-        where: { semana: semanaAtual },
+        where: {
+          semana: semanaAtual,
+          ...(planoParam ? { aluno: { planoTipo: planoParam } } : {}),
+        },
         include: { aluno: { select: { id: true, whatsapp: true, planoTipo: true } } },
         orderBy: { diasAtraso: "desc" },
       })
@@ -63,7 +78,7 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
               return (
                 <Link
                   key={iso}
-                  href={`/historico-atrasos?semana=${iso}`}
+                  href={buildHref(iso, planoParam)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
                     ativa
                       ? "bg-blue-600 text-white border-blue-600"
@@ -76,12 +91,41 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
             })}
           </div>
 
+          {/* Filtro de plano */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-slate-500 font-medium">Plano:</span>
+            <Link
+              href={buildHref(semanaIso, undefined)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+                !planoParam
+                  ? "bg-slate-700 text-white border-slate-700"
+                  : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              Todos
+            </Link>
+            {PLANOS.map((p) => (
+              <Link
+                key={p}
+                href={buildHref(semanaIso, planoParam === p ? undefined : p)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+                  planoParam === p
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {p}
+              </Link>
+            ))}
+          </div>
+
           {/* Tabela */}
           {semanaAtual && (
             <>
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold text-slate-700">
                   {fmtData(semanaAtual)}
+                  {planoParam && <span className="ml-2 text-sm font-normal text-indigo-600">· {planoParam}</span>}
                 </h2>
                 <span className="text-sm text-slate-400">
                   {snapshots.length} aluno{snapshots.length !== 1 ? "s" : ""} em atraso
@@ -103,7 +147,7 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
                     {snapshots.length === 0 && (
                       <tr>
                         <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
-                          Nenhum aluno atrasado registrado nesta semana.
+                          Nenhum aluno encontrado para este filtro.
                         </td>
                       </tr>
                     )}
