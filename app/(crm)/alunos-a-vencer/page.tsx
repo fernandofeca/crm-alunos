@@ -63,10 +63,14 @@ function parseRenovacaoPage(html: string): TutoryRenovacao[] {
   return result;
 }
 
+function hojeEmSaoPaulo(): Date {
+  const str = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const [ano, mes, dia] = str.split("-").map(Number);
+  return new Date(Date.UTC(ano, mes - 1, dia));
+}
+
 function diasRestantes(vencimento: Date): number {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  return Math.round((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.round((vencimento.getTime() - hojeEmSaoPaulo().getTime()) / (1000 * 60 * 60 * 24));
 }
 
 function corDias(dias: number) {
@@ -122,7 +126,7 @@ export default async function AlunosAVencerPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">📋 Alunos à Vencer</h1>
+        <h1 className="text-2xl font-bold text-slate-800">📋 Alunos a Vencer</h1>
         <p className="text-sm text-slate-500 mt-1">
           Planos vencendo nos próximos 7 dias — dados em tempo real do Tutory
         </p>

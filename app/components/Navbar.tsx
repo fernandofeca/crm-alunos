@@ -26,7 +26,7 @@ export default function Navbar() {
             Aniversariantes
           </Link>
           <Link href="/alunos-a-vencer" className="text-slate-600 hover:text-blue-600 transition">
-            Alunos à Vencer
+            Alunos a Vencer
           </Link>
           <Link href="/agenda" className="text-slate-600 hover:text-blue-600 transition">
             Agenda
