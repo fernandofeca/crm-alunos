@@ -60,43 +60,48 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Extrai chamadas fetch/$.ajax/$.post nos scripts inline
-  const inlineScripts: string[] = [];
+  // Extrai o script inline que contém "relatorio", "coaching" ou "lote" — sem limite
   const scriptBlocks = html.match(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi) ?? [];
-  for (const sb of scriptBlocks) {
-    const inner = sb.replace(/<\/?script[^>]*>/gi, "").trim();
-    if (
-      inner.includes("fetch(") ||
-      inner.includes("$.ajax") ||
-      inner.includes("$.post") ||
-      inner.includes("$.get") ||
-      inner.includes("relatorio") ||
-      inner.includes("coaching") ||
-      inner.includes("lote") ||
-      inner.includes("gerar")
-    ) {
-      inlineScripts.push(inner.slice(0, 2000));
-    }
-  }
+  const inlineScriptCompleto = scriptBlocks
+    .map((sb) => sb.replace(/<\/?script[^>]*>/gi, "").trim())
+    .filter((s) => s.includes("relatorio") || s.includes("coaching") || s.includes("lote") || s.includes("dispararEmails"))
+    .join("\n\n---\n\n");
 
-  // Extrai URLs de scripts externos Tutory
-  const scriptUrls = [...html.matchAll(/src=["'](https?:\/\/[^"']+\.js[^"']*|\/[^"']+\.js[^"']*)/gi)]
-    .map((m) => m[1])
-    .filter((u) => u.includes("tutory") || !u.includes("vendor"));
+  // Extrai array de alunos com tokens — padrão: {id: X, token: 'Y'} ou similar
+  const tokenMatches = [...html.matchAll(/\{\s*id\s*:\s*(\d+)\s*,\s*token\s*:\s*['"]([^'"]+)['"]/g)].map(
+    (m) => ({ id: m[1], token: m[2] })
+  );
 
-  // Amostra do HTML em volta de palavras-chave relevantes
-  const snippets: string[] = [];
-  for (const kw of ["gerar", "lote", "relatorio", "coaching", "estudo", "desempenho"]) {
-    const idx = html.toLowerCase().indexOf(kw);
-    if (idx >= 0) snippets.push(`[${kw}] ...${html.slice(Math.max(0, idx - 100), idx + 300)}...`);
+  // Alternativa: data-token em elementos HTML
+  const dataTokens = [...html.matchAll(/data-id=["'](\d+)["'][^>]*data-token=["']([^"']+)["']/g)].map(
+    (m) => ({ id: m[1], token: m[2] })
+  );
+  const dataTokensAlt = [...html.matchAll(/data-token=["']([^"']+)["'][^>]*data-id=["'](\d+)["']/g)].map(
+    (m) => ({ id: m[2], token: m[1] })
+  );
+
+  // Busca qualquer variável JS que pareça ser lista de alunos
+  const varAlunosMatch = inlineScriptCompleto.match(/(?:var|let|const)\s+(\w*[Aa]luno\w*|urls\w*)\s*=\s*(\[[\s\S]{0,3000}\])/);
+  const varAlunos = varAlunosMatch ? { nome: varAlunosMatch[1], valor: varAlunosMatch[2] } : null;
+
+  // Trechos em volta de "token" no script
+  const tokenSnippets: string[] = [];
+  let idx = 0;
+  while ((idx = inlineScriptCompleto.indexOf("token", idx)) >= 0) {
+    tokenSnippets.push(inlineScriptCompleto.slice(Math.max(0, idx - 80), idx + 120));
+    idx += 5;
+    if (tokenSnippets.length >= 10) break;
   }
 
   return NextResponse.json({
     pageSize: html.length,
     forms,
-    botoes,
-    inlineScripts,
-    scriptUrls,
-    snippets,
+    botoes: botoes.slice(0, 5), // só os primeiros para não poluir
+    inlineScriptCompleto,
+    tokenMatches: tokenMatches.slice(0, 5),
+    dataTokens: dataTokens.slice(0, 5),
+    dataTokensAlt: dataTokensAlt.slice(0, 5),
+    varAlunos,
+    tokenSnippets,
   });
 }
