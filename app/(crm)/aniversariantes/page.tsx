@@ -3,15 +3,20 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-function semanaAtual(): { inicio: Date; fim: Date } {
-  const hoje = new Date();
-  const diaSemana = hoje.getDay(); // 0=Dom ... 6=Sab
-  const segunda = new Date(hoje);
-  segunda.setDate(hoje.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1));
-  segunda.setHours(0, 0, 0, 0);
+// Returns today's date (year/month/day) in Brasília timezone (UTC-3, no DST)
+function hojeEmBrasilia(): { ano: number; mes: number; dia: number } {
+  const str = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const [ano, mes, dia] = str.split("-").map(Number);
+  return { ano, mes, dia };
+}
+
+function semanaAtual(hoje: { ano: number; mes: number; dia: number }): { inicio: Date; fim: Date } {
+  const hojeUtc = new Date(Date.UTC(hoje.ano, hoje.mes - 1, hoje.dia));
+  const diaSemana = hojeUtc.getUTCDay(); // 0=Dom ... 6=Sab
+  const segunda = new Date(hojeUtc);
+  segunda.setUTCDate(hojeUtc.getUTCDate() - (diaSemana === 0 ? 6 : diaSemana - 1));
   const domingo = new Date(segunda);
-  domingo.setDate(segunda.getDate() + 6);
-  domingo.setHours(23, 59, 59, 999);
+  domingo.setUTCDate(segunda.getUTCDate() + 6);
   return { inicio: segunda, fim: domingo };
 }
 
@@ -48,7 +53,8 @@ const MESES_PT: Record<number, string> = {
 };
 
 export default async function AniversariantesPage() {
-  const { inicio, fim } = semanaAtual();
+  const hoje = hojeEmBrasilia();
+  const { inicio, fim } = semanaAtual(hoje);
 
   const alunos = await prisma.aluno.findMany({
     where: { dataNascimento: { not: null } },
@@ -81,7 +87,6 @@ export default async function AniversariantesPage() {
     isHoje: boolean;
   };
 
-  const hoje = new Date();
   const aniversariantes: Aniversariante[] = [];
 
   for (const a of alunos) {
@@ -89,8 +94,9 @@ export default async function AniversariantesPage() {
     const anivDate = aniversarioNaSemana(a.dataNascimento, inicio, fim);
     if (!anivDate) continue;
     const isHoje =
-      anivDate.getUTCDate() === hoje.getDate() &&
-      anivDate.getUTCMonth() === hoje.getMonth();
+      anivDate.getUTCDate() === hoje.dia &&
+      anivDate.getUTCMonth() === hoje.mes - 1 &&
+      anivDate.getUTCFullYear() === hoje.ano;
     aniversariantes.push({
       ...a,
       dataNascimento: a.dataNascimento,
