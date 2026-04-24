@@ -131,6 +131,7 @@ export default function AlunosClient({
   const [total, setTotal] = useState(totalInicial);
   const [sort, setSort] = useState<{ field: SortField; dir: SortDir } | null>(null);
   const pageSize = 50;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [contatoModal, setContatoModal] = useState<{ alunoId: string; alunoNome: string } | null>(null);
   const [tipoContato, setTipoContato] = useState<"equipe" | "mentor">("equipe");
   const [dataContato, setDataContato] = useState(new Date().toISOString().slice(0, 10));
@@ -190,7 +191,10 @@ export default function AlunosClient({
 
   function handleQ(v: string) {
     setQ(v);
-    buscar(v, filtros, concursoFiltro, planoFiltro, apenasAtivos, 0, sort);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      buscar(v, filtros, concursoFiltro, planoFiltro, apenasAtivos, 0, sort);
+    }, 300);
   }
 
   function handleFiltro(v: string) {

@@ -36,11 +36,25 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {};
 
   if (q) {
-    where.OR = [
-      { nome: { contains: q } },
-      { email: { contains: q } },
-      { cpf: { contains: q } },
-    ];
+    const palavras = q.trim().split(/\s+/).filter(Boolean);
+    if (palavras.length <= 1) {
+      where.OR = [
+        { nome: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+        { cpf: { contains: q } },
+      ];
+    } else {
+      // Múltiplas palavras: todas devem aparecer no nome (qualquer ordem)
+      where.OR = [
+        {
+          AND: palavras.map((p) => ({
+            nome: { contains: p, mode: "insensitive" },
+          })),
+        },
+        { email: { contains: q, mode: "insensitive" } },
+        { cpf: { contains: q } },
+      ];
+    }
   }
 
   const diasAtrasoValues: number[] = [];
