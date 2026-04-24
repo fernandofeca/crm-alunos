@@ -147,40 +147,37 @@ export async function GET(req: NextRequest) {
   if (req.nextUrl.searchParams.get("debug") === "1") {
     const account = process.env.TUTORY_ACCOUNT ?? "";
     const password = process.env.TUTORY_PASSWORD ?? "";
-    const coachCode = process.env.TUTORY_COACH_CODE ?? account;
-    const tentativas = [
-      { label: "account+password", body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}` },
-      { label: "coach+password",   body: `coach=${encodeURIComponent(coachCode)}&password=${encodeURIComponent(password)}` },
-      { label: "email+password",   body: `email=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}` },
-      { label: "coach+account+password", body: `coach=${encodeURIComponent(coachCode)}&account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}` },
-    ];
-    const resultados = await Promise.all(
-      tentativas.map(async ({ label, body }) => {
-        try {
-          const r = await fetch("https://app.tutory.com.br/intent/login", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              "X-Requested-With": "XMLHttpRequest",
-              Origin: "https://app.tutory.com.br",
-            },
-            body,
-            redirect: "manual",
-          });
-          const respBody = await r.text();
-          const setCookie = r.headers.get("set-cookie") ?? "";
-          return {
-            label,
-            status: r.status,
-            phpsessid: setCookie.match(/PHPSESSID=[^;]+/)?.[0] ?? null,
-            body: respBody.slice(0, 300),
-          };
-        } catch (e) {
-          return { label, status: "erro", error: String(e) };
-        }
-      })
-    );
-    return NextResponse.json({ resultados });
+
+    // 1. Login no admin
+    const loginRes = await fetch("https://admin.tutory.com.br/intent/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" },
+      body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
+      redirect: "manual",
+    });
+    const adminCookie = loginRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+    if (!adminCookie) return NextResponse.json({ erro: "Login admin falhou", status: loginRes.status });
+
+    // 2. Buscar página de atrasos e encontrar links para app.tutory.com.br
+    const atrasosHtml = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", {
+      headers: { Cookie: adminCookie },
+    }).then(r => r.text());
+
+    // Procurar qualquer link para app.tutory ou links de painel
+    const appLinks = [...atrasosHtml.matchAll(/https?:\/\/app\.tutory\.com\.br[^\s"'<>]*/g)].map(m => m[0]).slice(0, 5);
+    const painelLinks = [...atrasosHtml.matchAll(/href="([^"]*(?:painel|panel|ver|abrir)[^"]*)"/gi)].map(m => m[1]).slice(0, 5);
+    const windowOpenLinks = [...atrasosHtml.matchAll(/window\.open\(['"]([^'"]+)['"]/gi)].map(m => m[1]).slice(0, 5);
+
+    // 3. Pegar primeiro bloco de aluno e ver HTML completo (para encontrar o botão "Ver Painel")
+    const primeiroBloco = atrasosHtml.split('class="student-list-item"')[1]?.slice(0, 1500) ?? "";
+
+    return NextResponse.json({
+      adminLoginOk: true,
+      appLinks,
+      painelLinks,
+      windowOpenLinks,
+      primeiroBlocoHtml: primeiroBloco,
+    });
   }
 
   executarReplanejamento().catch((e) => console.error("[replanejamento-bg]", e));
