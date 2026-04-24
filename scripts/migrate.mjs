@@ -30,6 +30,7 @@ const migrations = [
   "../prisma/migrations/20260423000000_conquistas/migration.sql",
   "../prisma/migrations/20260423000001_aluno_briefing/migration.sql",
   "../prisma/migrations/20260424000000_snapshot_atraso/migration.sql",
+  "../prisma/migrations/20260424000001_aluno_planilha_url/migration.sql",
 ];
 
 for (const file of migrations) {
@@ -38,8 +39,8 @@ for (const file of migrations) {
     await pool.query(sql);
     console.log(`✓ ${file} concluída`);
   } catch (e) {
-    if (e.code === "42P07") {
-      console.log(`✓ ${file} já aplicada (tabelas existem)`);
+    if (e.code === "42P07" || e.code === "42701") {
+      console.log(`✓ ${file} já aplicada (objeto já existe)`);
     } else {
       console.error(`Erro em ${file}:`, e.message);
       process.exit(1);
