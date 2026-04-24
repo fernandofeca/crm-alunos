@@ -30,6 +30,7 @@ type Aluno = {
   totalQuestoes: number;
   diasAtraso: number;
   dataInicio: string | null;
+  dataNascimento: string | null;
   tutoryId: number | null;
   disciplinas: Disciplina[];
   contatos: Contato[];
@@ -61,6 +62,29 @@ function taxaCor(taxa: number): string {
 function whatsappUrl(numero: string) {
   const limpo = numero.replace(/\D/g, "");
   return `https://wa.me/${limpo}`;
+}
+
+function aniversarioStatus(dataNascimento: string | null): "hoje" | "semana" | null {
+  if (!dataNascimento) return null;
+  const nasc = new Date(dataNascimento);
+  const hoje = new Date();
+  const nascDia = nasc.getUTCDate();
+  const nascMes = nasc.getUTCMonth();
+  // Check today (browser local time)
+  if (nascDia === hoje.getDate() && nascMes === hoje.getMonth()) return "hoje";
+  // Check rest of the week (Mon–Sun)
+  const diaSemana = hoje.getDay();
+  const segunda = new Date(hoje);
+  segunda.setDate(hoje.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1));
+  segunda.setHours(0, 0, 0, 0);
+  const domingo = new Date(segunda);
+  domingo.setDate(segunda.getDate() + 6);
+  domingo.setHours(23, 59, 59, 999);
+  for (const a of [hoje.getFullYear(), hoje.getFullYear() + 1]) {
+    const aniv = new Date(a, nascMes, nascDia);
+    if (aniv >= segunda && aniv <= domingo) return "semana";
+  }
+  return null;
 }
 
 function disciplinaMaisBaixa(disciplinas: Disciplina[]) {
@@ -439,22 +463,31 @@ export default function AlunosClient({
           <tbody className="divide-y divide-slate-100">
             {alunos.map((a, idx) => {
               const ultimoContato = a.contatos[0];
+              const aniv = aniversarioStatus(a.dataNascimento);
               return (
                 <tr key={a.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 text-slate-400 text-xs font-mono select-none">{page * pageSize + idx + 1}</td>
                   <td className="px-4 py-3">
-                    {a.tutoryId ? (
-                      <a
-                        href={`https://admin.tutory.com.br/alunos/index?aid=${a.tutoryId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        {a.nome}
-                      </a>
-                    ) : (
-                      <div className="font-medium text-slate-800">{a.nome}</div>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {a.tutoryId ? (
+                        <a
+                          href={`https://admin.tutory.com.br/alunos/index?aid=${a.tutoryId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {a.nome}
+                        </a>
+                      ) : (
+                        <span className="font-medium text-slate-800">{a.nome}</span>
+                      )}
+                      {aniv === "hoje" && (
+                        <span title="Aniversário hoje!" className="text-base leading-none">🎂</span>
+                      )}
+                      {aniv === "semana" && (
+                        <span title="Aniversário esta semana" className="text-base leading-none">🎈</span>
+                      )}
+                    </div>
                     <div className="text-xs text-slate-400">{a.email}</div>
                     {a.cpf && <div className="text-xs text-slate-400">CPF: {a.cpf}</div>}
                   </td>
