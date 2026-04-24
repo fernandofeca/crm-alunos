@@ -1,14 +1,11 @@
 /**
  * Replanejamento de Cronogramas
  *
- * Hipótese atual: o popup "Cronograma Replanejado" é gerado pelo JS externo
- * do Tutory. Precisamos encontrar qual endpoint o botão OK chama.
+ * O debug anterior descobriu:
+ * - O PHP gera inline: swal('Cronograma Replanejado', ..., 'info');
+ * - O comportamento do OK está no tutory-dashboard-notificacoes.js
  *
- * Estratégia do debug:
- *  1. ver-painel → PHPSESSID
- *  2. Chamar selecionar-notificacoes SEM visitar /painel/ antes (ver se retorna dados)
- *  3. Extrair URLs de scripts JS do HTML do painel
- *  4. Baixar o JS do Tutory e buscar "replan", "selecionar", "cronograma", "intent"
+ * Este debug busca e analisa esses arquivos JS específicos.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -57,9 +54,7 @@ async function scraparFormularios(adminCookie: string): Promise<AlunoForm[]> {
       const cpf   = block.match(/name="cpf"\s+value="([^"]+)"/)?.[1] ?? "";
       const token = block.match(/name="token"\s+value="([^"]+)"/)?.[1] ?? "";
       const admId = block.match(/name="adm_id"\s+value="(\d+)"/)?.[1] ?? "";
-      if (id && cpf && token && admId) {
-        result.push({ id, cpf, token, admId, nome, email });
-      }
+      if (id && cpf && token && admId) result.push({ id, cpf, token, admId, nome, email });
     }
   }
 
@@ -88,7 +83,7 @@ async function scraparFormularios(adminCookie: string): Promise<AlunoForm[]> {
   return result;
 }
 
-async function obterSessaoAluno(aluno: AlunoForm): Promise<string | null> {
+async function obterSessaoAluno(aluno: AlunoForm): Promise<{ cookie: string; location: string } | null> {
   const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
     method: "POST",
     headers: {
@@ -100,48 +95,33 @@ async function obterSessaoAluno(aluno: AlunoForm): Promise<string | null> {
     body: `cpf=${encodeURIComponent(aluno.cpf)}&id=${aluno.id}&token=${encodeURIComponent(aluno.token)}&adm_id=${aluno.admId}`,
     redirect: "manual",
   });
-  return verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? null;
+  const cookie = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+  const location = verRes.headers.get("location") ?? "/painel/";
+  if (!cookie) return null;
+  return { cookie, location };
 }
 
-/** Extrai URLs de scripts JS do HTML — preferindo scripts do Tutory */
-function extrairScriptUrls(html: string): string[] {
-  const urls: string[] = [];
-  for (const m of html.matchAll(/<script[^>]+src="([^"]+)"/gi)) {
-    const url = m[1];
-    if (url.includes("tutory") || url.includes("/assets/js") || url.includes("/js/")) {
-      urls.push(url.startsWith("http") ? url : `https://app.tutory.com.br${url}`);
-    }
+/** Extrai todas as chamadas de intent/ de um bloco JS */
+function extrairIntentCalls(js: string): string[] {
+  const linhas = js.split("\n");
+  return linhas
+    .filter((l) => /intent\//i.test(l))
+    .map((l) => l.trim())
+    .filter((l) => l.length < 400);
+}
+
+/** Extrai contexto ao redor de uma palavra num JS */
+function contextoAoRedor(js: string, palavra: string, janela = 800): string[] {
+  const resultados: string[] = [];
+  const lower = js.toLowerCase();
+  const palavraLower = palavra.toLowerCase();
+  let idx = 0;
+  while ((idx = lower.indexOf(palavraLower, idx)) !== -1) {
+    resultados.push(js.slice(Math.max(0, idx - 200), idx + janela));
+    idx += palavraLower.length;
+    if (resultados.length >= 5) break;
   }
-  return urls;
-}
-
-/** Busca padrões relevantes em um arquivo JS */
-function analisarJs(js: string): Record<string, string[]> {
-  const resultado: Record<string, string[]> = {};
-
-  // Linhas com "replan" ou "cronograma"
-  const linhasReplan = js.split("\n")
-    .filter((l) => /replan|cronograma/i.test(l))
-    .map((l) => l.trim().slice(0, 300));
-  if (linhasReplan.length) resultado.replan = linhasReplan.slice(0, 10);
-
-  // Linhas com "selecionar"
-  const linhasSelecionar = js.split("\n")
-    .filter((l) => /selecionar/i.test(l))
-    .map((l) => l.trim().slice(0, 300));
-  if (linhasSelecionar.length) resultado.selecionar = linhasSelecionar.slice(0, 10);
-
-  // Todos os endpoints intent/
-  const intents = [...new Set([...js.matchAll(/intent\/[\w-]+/gi)].map((m) => m[0]))];
-  if (intents.length) resultado.intents = intents;
-
-  // Chamadas AJAX/fetch com /intent/
-  const ajaxCalls = js.split("\n")
-    .filter((l) => /intent\//i.test(l) && /post|fetch|ajax|url/i.test(l))
-    .map((l) => l.trim().slice(0, 300));
-  if (ajaxCalls.length) resultado.ajaxCalls = ajaxCalls.slice(0, 10);
-
-  return resultado;
+  return resultados;
 }
 
 interface ReplanejamentoResult {
@@ -154,68 +134,31 @@ interface ReplanejamentoResult {
 
 async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResult> {
   try {
-    // 1. Obter sessão do aluno
-    const sessionCookie = await obterSessaoAluno(aluno);
-    if (!sessionCookie) {
-      return { nome: aluno.nome, id: aluno.id, status: "sem-sessão" };
-    }
+    const sessao = await obterSessaoAluno(aluno);
+    if (!sessao) return { nome: aluno.nome, id: aluno.id, status: "sem-sessão" };
 
-    // 2. Chamar selecionar-notificacoes com tutoryId → obter lista de notificações pendentes
-    const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
-      method: "POST",
+    const { cookie: sessionCookie, location } = sessao;
+    const panelUrl = location.startsWith("http") ? location : `https://app.tutory.com.br${location}`;
+
+    // Visitar /painel/ para disparar o swal (PHP processa o replanejamento)
+    await fetch(panelUrl, {
       headers: {
-        Authorization: `Bearer ${aluno.token}`,
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        Accept: "application/json, */*",
         Cookie: sessionCookie,
-        Origin: "https://app.tutory.com.br",
-        Referer: "https://app.tutory.com.br/painel/",
-        "X-Requested-With": "XMLHttpRequest",
+        "User-Agent": BROWSER_UA,
+        Accept: "text/html,application/xhtml+xml",
+        Referer: "https://app.tutory.com.br/intent/ver-painel",
       },
-      body: `id=${aluno.id}`,
+      redirect: "follow",
     });
-    const notifData = await notifRes.json().catch(() => null) as { data?: Array<{ id: number | string }> } | null;
 
-    const notifIds: string[] =
-      Array.isArray(notifData?.data) && notifData!.data.length > 0
-        ? notifData!.data.map((n) => String(n.id))
-        : [];
-
-    // 3a. Se encontrou IDs de notificação: confirmar cada um
-    if (notifIds.length > 0) {
-      const confirmacoes = await Promise.all(
-        notifIds.map((nid) =>
-          fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${aluno.token}`,
-              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-              Cookie: sessionCookie,
-              Origin: "https://app.tutory.com.br",
-              Referer: "https://app.tutory.com.br/painel/",
-              "X-Requested-With": "XMLHttpRequest",
-            },
-            body: `id=${nid}`,
-          }).then((r) => r.status)
-        )
-      );
-      return {
-        nome: aluno.nome,
-        id: aluno.id,
-        status: "ok",
-        notifIds,
-        replanStatus: confirmacoes[0],
-      };
-    }
-
-    // 3b. Fallback: visitar /painel/config/replanejar-atrasos
+    // Visitar /painel/config/replanejar-atrasos para garantir que o replanejamento foi executado
     const replanRes = await fetch("https://app.tutory.com.br/painel/config/replanejar-atrasos", {
       method: "GET",
       headers: {
         Cookie: sessionCookie,
         "User-Agent": BROWSER_UA,
         Accept: "text/html,application/xhtml+xml",
-        Referer: "https://app.tutory.com.br/painel/",
+        Referer: panelUrl,
       },
       redirect: "follow",
     });
@@ -223,8 +166,7 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResu
     return {
       nome: aluno.nome,
       id: aluno.id,
-      status: "ok-fallback",
-      notifIds: [],
+      status: "ok",
       replanStatus: replanRes.status,
     };
   } catch (e) {
@@ -258,22 +200,23 @@ async function executarReplanejamento() {
     if (i + 3 < alunos.length) await new Promise((r) => setTimeout(r, 400));
   }
 
-  const comNotif = resultados.filter((r) => (r.notifIds?.length ?? 0) > 0).length;
-  const fallback = resultados.filter((r) => r.status === "ok-fallback").length;
-  const falhas   = resultados.filter((r) => r.status !== "ok" && r.status !== "ok-fallback");
+  const sucessos = resultados.filter(
+    (r) => r.status === "ok" && typeof r.replanStatus === "number" && r.replanStatus < 400
+  ).length;
 
   return NextResponse.json({
     ok: true,
     total: alunos.length,
-    comNotificacoes: comNotif,
-    fallback,
-    falhas,
+    replanejados: sucessos,
+    falhas: resultados.filter(
+      (r) => r.status !== "ok" || typeof r.replanStatus !== "number" || r.replanStatus >= 400
+    ),
     executadoEm: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
   });
 }
 
-// GET ?key=cg-bulk-2026&debug=1 → inspeciona JS do Tutory para achar endpoint do OK
-// GET ?key=cg-bulk-2026          → cron (background)
+// GET ?key=cg-bulk-2026&debug=1  → analisa JS do Tutory para encontrar o endpoint do OK
+// GET ?key=cg-bulk-2026           → cron (background)
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
@@ -286,60 +229,51 @@ export async function GET(req: NextRequest) {
     const primeiro = alunos[0];
     if (!primeiro) return NextResponse.json({ error: "Nenhum aluno na lista" });
 
-    // Passo 1: ver-painel → PHPSESSID
-    const sessionCookie = await obterSessaoAluno(primeiro);
-    if (!sessionCookie) return NextResponse.json({ error: "ver-painel sem PHPSESSID" });
+    // 1. Sessão do aluno
+    const sessao = await obterSessaoAluno(primeiro);
+    if (!sessao) return NextResponse.json({ error: "ver-painel sem PHPSESSID" });
 
-    // Passo 2: selecionar-notificacoes SEM visitar /painel/ antes
-    const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${primeiro.token}`,
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        Accept: "application/json, */*",
-        Cookie: sessionCookie,
-        Origin: "https://app.tutory.com.br",
-        Referer: "https://app.tutory.com.br/painel/",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      body: `id=${primeiro.id}`,
-    });
-    const notifData = await notifRes.json().catch(() => "PARSE_ERROR");
-
-    // Passo 3: buscar scripts JS no HTML do painel
-    const panelHtml = await fetch("https://app.tutory.com.br/painel/", {
-      headers: {
-        Cookie: sessionCookie,
-        "User-Agent": BROWSER_UA,
-        Accept: "text/html,application/xhtml+xml",
-      },
+    // 2. HTML do painel (para capturar inline scripts)
+    const panelUrl = sessao.location.startsWith("http")
+      ? sessao.location
+      : `https://app.tutory.com.br${sessao.location}`;
+    const panelHtml = await fetch(panelUrl, {
+      headers: { Cookie: sessao.cookie, "User-Agent": BROWSER_UA, Accept: "text/html,application/xhtml+xml" },
       redirect: "follow",
     }).then((r) => r.text());
 
-    const scriptUrls = extrairScriptUrls(panelHtml);
+    // Scripts inline completos (sem truncar)
+    const inlineScriptsCompletos = [...panelHtml.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi)]
+      .map((m) => m[1].trim())
+      .filter((s) => /swal|replan|notific|cronograma/i.test(s));
 
-    // Passo 4: baixar e analisar os JS files
+    // 3. Baixar e analisar os arquivos JS específicos do Tutory
+    const arquivosTutory = [
+      "https://static.tutory.com.br/js/tutory-dashboard-notificacoes.js",
+      "https://static.tutory.com.br/js/tutory-dashboard-main.js",
+      "https://app.tutory.com.br/assets/js/novo-layout.js?v=1.1",
+    ];
+
     const jsAnalise: Record<string, unknown> = {};
-    for (const url of scriptUrls.slice(0, 5)) {
+    for (const url of arquivosTutory) {
       try {
         const js = await fetch(url, { headers: { "User-Agent": BROWSER_UA } }).then((r) => r.text());
-        jsAnalise[url] = analisarJs(js);
+        jsAnalise[url.split("/").pop()!] = {
+          tamanho: js.length,
+          intentCalls: extrairIntentCalls(js).slice(0, 20),
+          contextoSwal: contextoAoRedor(js, "swal"),
+          contextoReplan: contextoAoRedor(js, "replan"),
+          contextoNotif: contextoAoRedor(js, "notific"),
+        };
       } catch {
-        jsAnalise[url] = "FETCH_ERROR";
+        jsAnalise[url.split("/").pop()!] = "FETCH_ERROR";
       }
     }
 
-    // Passo 5: analisar também o HTML do painel (scripts inline)
-    const inlineScripts = [...panelHtml.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi)]
-      .map((m) => m[1])
-      .filter((s) => /intent|replan|selecionar/i.test(s));
-
     return NextResponse.json({
       primeiroAluno: { nome: primeiro.nome, id: primeiro.id },
-      selecionarSemPainel: { status: notifRes.status, data: notifData },
-      scriptUrls,
+      inlineScriptsCompletos,
       jsAnalise,
-      inlineScriptsComIntent: inlineScripts.map((s) => s.slice(0, 500)),
     });
   }
 
