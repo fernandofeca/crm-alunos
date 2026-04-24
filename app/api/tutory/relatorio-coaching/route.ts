@@ -1,13 +1,13 @@
 /**
  * Relatório de Coaching — Automação do envio semanal
  *
- * Fluxo (descoberto via debug 2025-04-24):
+ * Fluxo (confirmado via debug 2025-04-24):
  *  1. Admin login → PHPSESSID
- *  2. Scraping de todas as páginas de /alunos/coaching → lista de IDs
+ *  2. GET /alunos/coaching → extrai adminUser.token (Bearer) + IDs dos alunos
  *  3. POST /intent/cadastrar-relatorio-coach (lote de IDs, datas, agrupamento)
- *     → retorna [{id, token}, ...]
- *  4. Para cada aluno e cada modelo ('aluno' e 'questoes'):
- *     POST /intent/cadastrar-envio-relatorio-coach → dispara email ao aluno
+ *     → retorna [{id, token}, ...]  — usa Authorization: Bearer adminUser.token
+ *  4. Para cada aluno × cada modelo ('aluno', 'questoes'):
+ *     POST /intent/cadastrar-envio-relatorio-coach → dispara email
  *
  * Datas: dt_ini = hoje − 4 meses | dt_fim = hoje | agrupamento = semana
  */
@@ -28,8 +28,7 @@ function calcDatas() {
   const dtFim = formatDateBR(hoje);
   const ini = new Date(hoje);
   ini.setMonth(ini.getMonth() - 4);
-  const dtIni = formatDateBR(ini);
-  return { dtIni, dtFim };
+  return { dtIni: formatDateBR(ini), dtFim };
 }
 
 async function getAdminCookie(): Promise<string> {
@@ -48,39 +47,36 @@ async function getAdminCookie(): Promise<string> {
   return res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
 }
 
-// ─── scraping de IDs ─────────────────────────────────────────────────────────
+// ─── extrai IDs + adminUser.token da página de coaching ─────────────────────
 
-async function scraparIdsCoaching(adminCookie: string): Promise<string[]> {
+interface CoachingPageData { ids: string[]; bearerToken: string }
+
+async function scraparCoachingPage(adminCookie: string): Promise<CoachingPageData> {
   const ids = new Set<string>();
 
   function parsePage(html: string) {
-    // Classe real: "custom-control-input relatorio-aluno-check" (sem -all)
-    for (const m of html.matchAll(/relatorio-aluno-check"[^>]*data-id="(\d+)"/g)) {
-      ids.add(m[1]);
-    }
-    for (const m of html.matchAll(/data-id="(\d+)"[^>]*relatorio-aluno-check"/g)) {
-      ids.add(m[1]);
-    }
+    for (const m of html.matchAll(/relatorio-aluno-check"[^>]*data-id="(\d+)"/g)) ids.add(m[1]);
+    for (const m of html.matchAll(/data-id="(\d+)"[^>]*relatorio-aluno-check"/g)) ids.add(m[1]);
   }
 
   const firstHtml = await fetch("https://admin.tutory.com.br/alunos/coaching?p=1", {
     headers: { Cookie: adminCookie },
   }).then((r) => r.text());
 
-  if (firstHtml.includes('document.location.href = "/login"')) return [];
+  if (firstHtml.includes('document.location.href = "/login"')) return { ids: [], bearerToken: "" };
+
+  // Extrai adminUser.token embutido no HTML
+  const bearerToken = firstHtml.match(/adminUser\s*=\s*\{[^}]*token\s*:\s*['"]([^'"]+)['"]/s)?.[1] ?? "";
+
   parsePage(firstHtml);
 
-  // Tenta link "Última ?p=N" primeiro; senão usa "Mostrando entre X e Y de TOTAL"
+  // Paginação
   const ultimaMatch = firstHtml.match(/\?p=(\d+)[^"]*"[^>]*>\s*[ÚU]ltima/);
   const totalAlunosMatch = firstHtml.match(/Mostrando entre \d+ e \d+ de (\d+)/);
   let totalPages = 1;
-  if (ultimaMatch) {
-    totalPages = parseInt(ultimaMatch[1], 10);
-  } else if (totalAlunosMatch) {
-    totalPages = Math.ceil(parseInt(totalAlunosMatch[1], 10) / 100);
-  }
+  if (ultimaMatch) totalPages = parseInt(ultimaMatch[1], 10);
+  else if (totalAlunosMatch) totalPages = Math.ceil(parseInt(totalAlunosMatch[1], 10) / 100);
 
-  // Busca em paralelo (lotes de 5)
   for (let start = 2; start <= totalPages; start += 5) {
     const batch: Promise<void>[] = [];
     for (let p = start; p < start + 5 && p <= totalPages; p++) {
@@ -93,59 +89,16 @@ async function scraparIdsCoaching(adminCookie: string): Promise<string[]> {
     await Promise.all(batch);
   }
 
-  return [...ids];
+  return { ids: [...ids], bearerToken };
 }
 
 // ─── passo 1: gerar relatórios em lote ──────────────────────────────────────
 
 interface RelatorioToken { id: string; token: string }
 
-async function gerarRelatorios(
-  adminCookie: string,
-  ids: string[],
-  dtIni: string,
-  dtFim: string,
-  agrupamento = "semana"
-): Promise<RelatorioToken[]> {
-  const tokens: RelatorioToken[] = [];
-
-  // Lotes de 50 IDs por chamada
-  for (let i = 0; i < ids.length; i += 50) {
-    const lote = ids.slice(i, i + 50);
-    try {
-      const res = await fetch("https://admin.tutory.com.br/intent/cadastrar-relatorio-coach", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "X-Requested-With": "XMLHttpRequest",
-          Cookie: adminCookie,
-        },
-        body: new URLSearchParams({
-          "alunos[]": lote.join(","), // fallback
-          dt_ini: dtIni,
-          dt_fim: dtFim,
-          agrupamento,
-        }).toString().replace("alunos%5B%5D=", `alunos[]=${lote[0]}&`) +
-          lote.slice(1).map((id) => `&alunos[]=${id}`).join(""),
-      });
-
-      const json = await res.json().catch(() => null);
-      const data: RelatorioToken[] = json?.data ?? [];
-      tokens.push(...data);
-    } catch {
-      // continua com os próximos lotes
-    }
-
-    if (i + 50 < ids.length) await new Promise((r) => setTimeout(r, 800));
-  }
-
-  return tokens;
-}
-
-// ─── passo 1 (alternativa): body correto para array PHP ─────────────────────
-
 async function gerarRelatoriosV2(
   adminCookie: string,
+  bearerToken: string,
   ids: string[],
   dtIni: string,
   dtFim: string,
@@ -164,6 +117,7 @@ async function gerarRelatoriosV2(
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           "X-Requested-With": "XMLHttpRequest",
+          "Authorization": `Bearer ${bearerToken}`,
           Cookie: adminCookie,
         },
         body,
@@ -190,13 +144,13 @@ interface EnvioResult { alunoId: string; modelo: string; ok: boolean; email?: st
 
 async function enviarEmails(
   adminCookie: string,
+  bearerToken: string,
   tokens: RelatorioToken[],
   dtIni: string,
   dtFim: string
 ): Promise<EnvioResult[]> {
   const resultados: EnvioResult[] = [];
 
-  // 3 alunos × 2 modelos por lote, intervalo de 400ms
   for (let i = 0; i < tokens.length; i += 3) {
     const lote = tokens.slice(i, i + 3);
     const tasks: Promise<void>[] = [];
@@ -209,6 +163,7 @@ async function enviarEmails(
             headers: {
               "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
               "X-Requested-With": "XMLHttpRequest",
+              "Authorization": `Bearer ${bearerToken}`,
               Cookie: adminCookie,
             },
             body: new URLSearchParams({
@@ -221,12 +176,7 @@ async function enviarEmails(
           })
             .then((r) => r.json())
             .then((json) => {
-              resultados.push({
-                alunoId: t.id,
-                modelo,
-                ok: true,
-                email: json?.data?.email,
-              });
+              resultados.push({ alunoId: t.id, modelo, ok: true, email: json?.data?.email });
             })
             .catch((e) => {
               resultados.push({ alunoId: t.id, modelo, ok: false, erro: String(e) });
@@ -246,38 +196,36 @@ async function enviarEmails(
 
 async function executarRelatorios() {
   const adminCookie = await getAdminCookie();
-  if (!adminCookie) {
-    return NextResponse.json({ error: "Falha no login admin" }, { status: 500 });
-  }
+  if (!adminCookie) return NextResponse.json({ error: "Falha no login admin" }, { status: 500 });
 
-  const ids = await scraparIdsCoaching(adminCookie);
-  if (ids.length === 0) {
-    return NextResponse.json({ ok: true, total: 0, msg: "Nenhum aluno encontrado na página de coaching" });
-  }
+  const { ids, bearerToken } = await scraparCoachingPage(adminCookie);
+
+  if (ids.length === 0) return NextResponse.json({ ok: true, total: 0, msg: "Nenhum aluno na página de coaching" });
+  if (!bearerToken) return NextResponse.json({ ok: false, error: "adminUser.token não encontrado na página" }, { status: 500 });
 
   const { dtIni, dtFim } = calcDatas();
 
-  const tokens = await gerarRelatoriosV2(adminCookie, ids, dtIni, dtFim, "semana");
-  if (tokens.length === 0) {
+  const relTokens = await gerarRelatoriosV2(adminCookie, bearerToken, ids, dtIni, dtFim, "semana");
+  if (relTokens.length === 0) {
     return NextResponse.json({
       ok: false,
-      total: ids.length,
-      msg: "Relatórios não foram gerados — verifique o endpoint cadastrar-relatorio-coach",
+      totalAlunos: ids.length,
+      msg: "Nenhum token retornado por cadastrar-relatorio-coach",
       dtIni,
       dtFim,
     });
   }
 
-  const envios = await enviarEmails(adminCookie, tokens, dtIni, dtFim);
+  const envios = await enviarEmails(adminCookie, bearerToken, relTokens, dtIni, dtFim);
   const enviados = envios.filter((e) => e.ok).length;
   const falhas = envios.filter((e) => !e.ok);
 
   return NextResponse.json({
     ok: true,
     totalAlunos: ids.length,
-    tokenGerados: tokens.length,
+    tokenGerados: relTokens.length,
     emailsEnviados: enviados,
-    emailsEsperados: tokens.length * MODELOS.length,
+    emailsEsperados: relTokens.length * MODELOS.length,
     falhas: falhas.length > 0 ? falhas : undefined,
     dtIni,
     dtFim,
@@ -287,14 +235,15 @@ async function executarRelatorios() {
   });
 }
 
-// ─── debug: testa com 1 aluno ────────────────────────────────────────────────
+// ─── debug: testa com o 1º aluno ────────────────────────────────────────────
 
 async function executarDebug() {
   const adminCookie = await getAdminCookie();
   if (!adminCookie) return NextResponse.json({ error: "Login falhou" });
 
-  const ids = await scraparIdsCoaching(adminCookie);
+  const { ids, bearerToken } = await scraparCoachingPage(adminCookie);
   if (ids.length === 0) return NextResponse.json({ msg: "Nenhum aluno no coaching" });
+  if (!bearerToken) return NextResponse.json({ erro: "adminUser.token não encontrado" });
 
   const { dtIni, dtFim } = calcDatas();
   const primeiroId = ids[0];
@@ -306,41 +255,29 @@ async function executarDebug() {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
       "X-Requested-With": "XMLHttpRequest",
+      "Authorization": `Bearer ${bearerToken}`,
       Cookie: adminCookie,
     },
     body,
   });
   const gerarJson = await gerarRes.json().catch(() => null);
-  const tokens: RelatorioToken[] = gerarJson?.data ?? [];
+  const relTokens: RelatorioToken[] = gerarJson?.data ?? [];
 
-  if (tokens.length === 0) {
-    return NextResponse.json({
-      etapa: "gerar-relatorio",
-      status: gerarRes.status,
-      resposta: gerarJson,
-      primeiroId,
-      dtIni,
-      dtFim,
-      erro: "Nenhum token retornado",
-    });
+  if (relTokens.length === 0) {
+    return NextResponse.json({ etapa: "gerar-relatorio", status: gerarRes.status, resposta: gerarJson, primeiroId, dtIni, dtFim, erro: "Nenhum token retornado" });
   }
 
-  // Envia email modelo 'aluno' para o 1º aluno (sem disparar 'questoes' no debug)
-  const t = tokens[0];
+  // Envia só modelo 'aluno' para o 1º (debug conservador)
+  const t = relTokens[0];
   const enviarRes = await fetch("https://admin.tutory.com.br/intent/cadastrar-envio-relatorio-coach", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
       "X-Requested-With": "XMLHttpRequest",
+      "Authorization": `Bearer ${bearerToken}`,
       Cookie: adminCookie,
     },
-    body: new URLSearchParams({
-      aluno_id: t.id,
-      token: t.token,
-      dt_ini: dtIni,
-      dt_fim: dtFim,
-      modelo: "aluno",
-    }).toString(),
+    body: new URLSearchParams({ aluno_id: t.id, token: t.token, dt_ini: dtIni, dt_fim: dtFim, modelo: "aluno" }).toString(),
   });
   const enviarJson = await enviarRes.json().catch(() => null);
 
@@ -349,6 +286,7 @@ async function executarDebug() {
     primeiroId,
     dtIni,
     dtFim,
+    bearerTokenOk: bearerToken.length > 10,
     gerarStatus: gerarRes.status,
     gerarResposta: gerarJson,
     tokenObtido: t,
@@ -359,17 +297,12 @@ async function executarDebug() {
 
 // ─── handlers HTTP ───────────────────────────────────────────────────────────
 
-// GET ?key=cg-bulk-2026&debug=1  → testa com 1 aluno
-// GET ?key=cg-bulk-2026           → cron (fire-and-forget)
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
-  if (req.nextUrl.searchParams.get("debug") === "1") {
-    return executarDebug();
-  }
+  if (req.nextUrl.searchParams.get("debug") === "1") return executarDebug();
 
-  // Cron: dispara em background
   executarRelatorios().catch((e) => console.error("[relatorio-coaching-bg]", e));
   return NextResponse.json({
     ok: true,
@@ -378,7 +311,6 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// POST autenticado → aguarda resultado completo
 export async function POST(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") {
