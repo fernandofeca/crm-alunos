@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 type TutoryAluno = {
   id: number;
@@ -192,18 +192,21 @@ async function getSessionCookie(): Promise<string> {
   return res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
 }
 
-export async function GET() {
-  const cookie = await getSessionCookie();
-  if (!cookie) return NextResponse.json({ error: "Sem credenciais" }, { status: 500 });
-  const html = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", { headers: { Cookie: cookie } }).then((r) => r.text());
-  const stripTags = (s: string) => s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-  const blocks = html.split('class="student-list-item"').slice(1, 4);
-  return NextResponse.json({ amostra: blocks.map((b) => stripTags(b).slice(0, 400)) });
+export async function GET(req: NextRequest) {
+  const key = req.nextUrl.searchParams.get("key");
+  if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  return executarSync();
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const key = req.nextUrl.searchParams.get("key");
+  if (key === "cg-bulk-2026") return executarSync();
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  return executarSync();
+}
+
+async function executarSync() {
 
   try {
     // Single login — share cookie across all HTML scraping functions
