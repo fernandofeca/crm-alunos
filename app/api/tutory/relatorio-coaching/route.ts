@@ -66,7 +66,7 @@ async function scraparCoachingPage(adminCookie: string): Promise<CoachingPageDat
   if (firstHtml.includes('document.location.href = "/login"')) return { ids: [], bearerToken: "" };
 
   // Extrai adminUser.token embutido no HTML
-  const bearerToken = firstHtml.match(/adminUser\s*=\s*\{[^}]*token\s*:\s*['"]([^'"]+)['"]/s)?.[1] ?? "";
+  const bearerToken = firstHtml.match(/adminUser\s*=\s*\{[^}]*token\s*:\s*['"]([^'"]+)['"]/)?.[1] ?? "";
 
   parsePage(firstHtml);
 
