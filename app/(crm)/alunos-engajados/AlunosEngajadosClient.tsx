@@ -62,10 +62,14 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
   const router = useRouter();
   const [planoFiltro, setPlanoFiltro] = useState<string[]>([]);
   const [concursoFiltro, setConcursoFiltro] = useState<string[]>([]);
+  const [sextaFiltro, setSextaFiltro] = useState<string>(""); // "" = todas
   const [planoOpen, setPlanoOpen] = useState(false);
   const [concursoOpen, setConcursoOpen] = useState(false);
   const planoRef = useRef<HTMLDivElement>(null);
   const concursoRef = useRef<HTMLDivElement>(null);
+
+  // Reset sexta filter when month changes
+  useEffect(() => { setSextaFiltro(""); }, [mesAtual]);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -83,7 +87,12 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
     alunoMap.get(key)!.semanas.push({ semana: c.semana, horas: c.horas });
   }
 
+  // Sextas visíveis na tabela (todas ou só a selecionada)
+  const sextasVisiveis = sextaFiltro ? sextas.filter((s) => s === sextaFiltro) : sextas;
+
   let entries = Array.from(alunoMap.values());
+  // Quando uma sexta específica está selecionada, mostra só quem tem selo nela
+  if (sextaFiltro) entries = entries.filter((e) => e.semanas.some((s) => s.semana === sextaFiltro));
   if (planoFiltro.length > 0) entries = entries.filter((e) => planoFiltro.includes(e.aluno.planoTipo));
   if (concursoFiltro.length > 0) entries = entries.filter((e) => concursoFiltro.includes(e.aluno.concurso));
   entries.sort((a, b) => {
@@ -179,6 +188,18 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
           ))}
         </select>
 
+        {/* Sexta selector */}
+        <select
+          value={sextaFiltro}
+          onChange={(e) => setSextaFiltro(e.target.value)}
+          className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white hover:bg-slate-50 text-slate-600 cursor-pointer"
+        >
+          <option value="">Todas as sextas</option>
+          {sextas.map((s) => (
+            <option key={s} value={s}>{fmtSemana(s)}</option>
+          ))}
+        </select>
+
         <div className="flex items-center text-sm text-slate-500 ml-1">
           {entries.length} aluno{entries.length !== 1 ? "s" : ""}
         </div>
@@ -194,7 +215,7 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
               <th className="px-4 py-3">Concurso</th>
               <th className="px-4 py-3">Plano</th>
               <th className="px-4 py-3 text-center">Selos</th>
-              {sextas.map((s) => (
+              {sextasVisiveis.map((s) => (
                 <th key={s} className="px-4 py-3 text-center">{fmtSemana(s)}</th>
               ))}
               <th className="px-4 py-3"></th>
@@ -203,7 +224,7 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
           <tbody>
             {entries.length === 0 && (
               <tr>
-                <td colSpan={6 + sextas.length} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={6 + sextasVisiveis.length} className="px-4 py-8 text-center text-slate-400">
                   Nenhum aluno engajado neste mês.
                 </td>
               </tr>
@@ -231,7 +252,7 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
                       <span className="text-xs text-slate-500 ml-1">({semanas.length}/{sextas.length})</span>
                     </span>
                   </td>
-                  {sextas.map((s) => {
+                  {sextasVisiveis.map((s) => {
                     const horas = horasPorSemana[s];
                     return (
                       <td key={s} className="px-4 py-3 text-center">
