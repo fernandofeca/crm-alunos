@@ -28,6 +28,11 @@ type Aluno = {
   assuntoMaisBaixoNota: number;
   diasAtraso: number;
   tutoryId: number | null;
+  dataNascimento: string | null;
+  cidade: string;
+  estado: string;
+  endereco: string;
+  bio: string;
   disciplinas: Disciplina[];
   contatos: Contato[];
   conquistas: Conquista[];
@@ -484,6 +489,47 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
           </div>
         </div>
       </div>
+
+      {/* Dados Pessoais (briefing) */}
+      {(aluno.dataNascimento || aluno.cidade || aluno.estado || aluno.endereco || aluno.bio) && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="text-base font-semibold text-slate-700 mb-4">Dados Pessoais</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {aluno.dataNascimento && (
+              <div>
+                <p className="text-xs text-slate-400 mb-0.5">Data de Nascimento</p>
+                <p className="text-sm text-slate-700">
+                  {new Date(aluno.dataNascimento).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
+                </p>
+              </div>
+            )}
+            {aluno.cidade && (
+              <div>
+                <p className="text-xs text-slate-400 mb-0.5">Cidade</p>
+                <p className="text-sm text-slate-700">{aluno.cidade}</p>
+              </div>
+            )}
+            {aluno.estado && (
+              <div>
+                <p className="text-xs text-slate-400 mb-0.5">Estado</p>
+                <p className="text-sm text-slate-700">{aluno.estado}</p>
+              </div>
+            )}
+            {aluno.endereco && (
+              <div>
+                <p className="text-xs text-slate-400 mb-0.5">Endereço</p>
+                <p className="text-sm text-slate-700">{aluno.endereco}</p>
+              </div>
+            )}
+            {aluno.bio && (
+              <div className="sm:col-span-2">
+                <p className="text-xs text-slate-400 mb-0.5">Bio</p>
+                <p className="text-sm text-slate-700 whitespace-pre-line">{aluno.bio}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid sm:grid-cols-2 gap-6">
         {/* Conquistas */}
