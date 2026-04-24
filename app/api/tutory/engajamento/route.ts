@@ -119,7 +119,13 @@ async function scrapeEngajamento(cookie: string): Promise<{ email: string; horas
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  return processar(req.nextUrl.searchParams.get("dry") === "true");
+  // Cron: responde imediatamente para não estourar o timeout do cron-job.org
+  processar(req.nextUrl.searchParams.get("dry") === "true").catch((e) => console.error("[engajamento-bg]", e));
+  return NextResponse.json({
+    ok: true,
+    message: "Engajamento iniciado em background",
+    timestamp: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+  });
 }
 
 export async function POST(req: NextRequest) {

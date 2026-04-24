@@ -35,7 +35,13 @@ export async function GET(req: NextRequest) {
   if (key !== "cg-bulk-2026") {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
-  return executarRetirarAtrasos();
+  // Responde imediatamente para não estourar o timeout do cron-job.org
+  executarRetirarAtrasos().catch((e) => console.error("[retirar-atrasos-bg]", e));
+  return NextResponse.json({
+    ok: true,
+    message: "Retirar atrasos iniciado em background",
+    timestamp: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+  });
 }
 
 // Manual via painel (usuário autenticado)
