@@ -66,14 +66,21 @@ async function fetchDiasAtraso(cookie: string): Promise<{ map: Map<string, numbe
     if (!cookie) return { map, debug: "Sem cookie de sessão" };
 
     function parsePage(html: string) {
+      const stripTags = (s: string) => s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
       const blocks = html.split('class="student-list-item"');
       for (const block of blocks.slice(1)) {
         const searchMatch = block.match(/data-search="([^"]+)"/);
-        const diasMatch = block.match(/(\d+)\s+dias/);
-        if (!searchMatch || !diasMatch) continue;
+        if (!searchMatch) continue;
         const parts = searchMatch[1].trim().split(" ");
         const email = parts[parts.length - 1].toLowerCase();
-        const dias = parseInt(diasMatch[1], 10);
+        const texto = stripTags(block);
+        // Match "X dia(s) de atraso" or "atraso: X" or "X dias" — try specific first
+        const atrasoMatch =
+          texto.match(/(\d+)\s+dias?\s+de\s+atraso/i) ??
+          texto.match(/atraso[:\s]+(\d+)\s+dias?/i) ??
+          texto.match(/(\d+)\s+dias?/i);
+        if (!atrasoMatch) continue;
+        const dias = parseInt(atrasoMatch[1], 10);
         if (email && dias > 0) map.set(email, dias);
       }
     }
@@ -183,6 +190,15 @@ async function getSessionCookie(): Promise<string> {
     body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
   });
   return res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+}
+
+export async function GET() {
+  const cookie = await getSessionCookie();
+  if (!cookie) return NextResponse.json({ error: "Sem credenciais" }, { status: 500 });
+  const html = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", { headers: { Cookie: cookie } }).then((r) => r.text());
+  const stripTags = (s: string) => s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const blocks = html.split('class="student-list-item"').slice(1, 4);
+  return NextResponse.json({ amostra: blocks.map((b) => stripTags(b).slice(0, 400)) });
 }
 
 export async function POST() {
