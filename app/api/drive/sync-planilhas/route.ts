@@ -23,6 +23,10 @@ function normalizeName(name: string): string {
     .replace(/[\u{1F000}-\u{1FFFF}|\u{2600}-\u{27FF}|\u{2700}-\u{27BF}|\u{FE00}-\u{FEFF}|\u{1F900}-\u{1F9FF}]/gu, "")
     // Remove caracteres especiais de prefixo comuns (💎 ⭐ etc.)
     .replace(/^[^\w\s]+/, "")
+    // Remove prefixos "CO-", "CO ", "C0-" usados no banco
+    .replace(/^c[o0][\s\-–]+/i, "")
+    // Remove extensões de arquivo
+    .replace(/\.xlsx?$/i, "")
     // Normaliza acentos → ASCII
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -130,7 +134,7 @@ async function fazerMatching(arquivos: DriveFile[]): Promise<MatchResult[]> {
       if (sim > melhor.sim) melhor = { aluno: a, sim };
     }
 
-    if (melhor.sim >= 0.80) {
+    if (melhor.sim >= 0.93) {
       resultados.push({
         driveNome: arq.name,
         driveLink: arq.webViewLink,
