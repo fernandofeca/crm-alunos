@@ -147,35 +147,36 @@ export async function GET(req: NextRequest) {
   if (req.nextUrl.searchParams.get("debug") === "1") {
     const account = process.env.TUTORY_ACCOUNT ?? "";
     const password = process.env.TUTORY_PASSWORD ?? "";
-    const endpoints = [
-      "https://app.tutory.com.br/intent/login",
-      "https://app.tutory.com.br/api/login",
-      "https://app.tutory.com.br/login",
+    const coachCode = process.env.TUTORY_COACH_CODE ?? account;
+    const tentativas = [
+      { label: "account+password", body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}` },
+      { label: "coach+password",   body: `coach=${encodeURIComponent(coachCode)}&password=${encodeURIComponent(password)}` },
+      { label: "email+password",   body: `email=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}` },
+      { label: "coach+account+password", body: `coach=${encodeURIComponent(coachCode)}&account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}` },
     ];
     const resultados = await Promise.all(
-      endpoints.map(async (url) => {
+      tentativas.map(async ({ label, body }) => {
         try {
-          const r = await fetch(url, {
+          const r = await fetch("https://app.tutory.com.br/intent/login", {
             method: "POST",
             headers: {
               "Content-Type": "application/x-www-form-urlencoded",
               "X-Requested-With": "XMLHttpRequest",
               Origin: "https://app.tutory.com.br",
             },
-            body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
+            body,
             redirect: "manual",
           });
-          const body = await r.text();
+          const respBody = await r.text();
           const setCookie = r.headers.get("set-cookie") ?? "";
           return {
-            url,
+            label,
             status: r.status,
             phpsessid: setCookie.match(/PHPSESSID=[^;]+/)?.[0] ?? null,
-            setCookieHeader: setCookie.slice(0, 200),
-            bodyPreview: body.slice(0, 300),
+            body: respBody.slice(0, 300),
           };
         } catch (e) {
-          return { url, status: "erro", error: String(e) };
+          return { label, status: "erro", error: String(e) };
         }
       })
     );
