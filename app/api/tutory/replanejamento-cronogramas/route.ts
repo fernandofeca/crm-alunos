@@ -138,10 +138,50 @@ async function executarReplanejamento() {
   });
 }
 
+// GET ?key=cg-bulk-2026&debug=1 — testa o login e mostra resposta
 // GET ?key=cg-bulk-2026 — cron (responde imediatamente)
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+
+  if (req.nextUrl.searchParams.get("debug") === "1") {
+    const account = process.env.TUTORY_ACCOUNT ?? "";
+    const password = process.env.TUTORY_PASSWORD ?? "";
+    const endpoints = [
+      "https://app.tutory.com.br/intent/login",
+      "https://app.tutory.com.br/api/login",
+      "https://app.tutory.com.br/login",
+    ];
+    const resultados = await Promise.all(
+      endpoints.map(async (url) => {
+        try {
+          const r = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "X-Requested-With": "XMLHttpRequest",
+              Origin: "https://app.tutory.com.br",
+            },
+            body: `account=${encodeURIComponent(account)}&password=${encodeURIComponent(password)}`,
+            redirect: "manual",
+          });
+          const body = await r.text();
+          const setCookie = r.headers.get("set-cookie") ?? "";
+          return {
+            url,
+            status: r.status,
+            phpsessid: setCookie.match(/PHPSESSID=[^;]+/)?.[0] ?? null,
+            setCookieHeader: setCookie.slice(0, 200),
+            bodyPreview: body.slice(0, 300),
+          };
+        } catch (e) {
+          return { url, status: "erro", error: String(e) };
+        }
+      })
+    );
+    return NextResponse.json({ resultados });
+  }
+
   executarReplanejamento().catch((e) => console.error("[replanejamento-bg]", e));
   return NextResponse.json({
     ok: true,
