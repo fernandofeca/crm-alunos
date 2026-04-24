@@ -195,7 +195,24 @@ async function getSessionCookie(): Promise<string> {
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  return executarSync();
+  // ?debug=atraso → inspeciona botões/forms da página de atraso
+  if (req.nextUrl.searchParams.get("debug") === "atraso") {
+    const cookie = await getSessionCookie();
+    const html = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", { headers: { Cookie: cookie } }).then(r => r.text());
+    const botoes = [...html.matchAll(/(?:href|action|data-url|data-href)=["']([^"']*retirar[^"']*)["']/gi)].map(m => m[1]);
+    const forms = [...html.matchAll(/<form[^>]*action=["']([^"']*)["'][^>]*>/gi)].map(m => m[1]);
+    const onclick = [...html.matchAll(/onclick=["']([^"']*replan[^"']*|[^"']*retirar[^"']*)["']/gi)].map(m => m[1]);
+    const links = [...html.matchAll(/href=["']([^"']*retirar[^"'|]*replan[^"']*)["']/gi)].map(m => m[1]);
+    return NextResponse.json({ botoes, forms, onclick, links, htmlSnippet: html.slice(html.indexOf("retirar") - 200, html.indexOf("retirar") + 400).replace(/<[^>]*>/g, " ") });
+  }
+  // Cron: responde imediatamente e roda o sync em background
+  // (cron-job.org tem timeout de 30s, mas o sync demora mais)
+  executarSync().catch((e) => console.error("[sync-bg]", e));
+  return NextResponse.json({
+    ok: true,
+    message: "Sync iniciado em background",
+    timestamp: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+  });
 }
 
 export async function POST(req: NextRequest) {
