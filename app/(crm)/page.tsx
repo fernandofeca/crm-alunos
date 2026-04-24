@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+import AcoesTutory from "./components/AcoesTutory";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,8 @@ export default async function DashboardPage() {
           ))}
         </div>
       </div>
+
+      <AcoesTutory />
 
       <div>
         <div className="flex items-center justify-between mb-3">
