@@ -107,13 +107,22 @@ export async function GET(req: NextRequest) {
     if (relatorioSnippets.length >= 5) break;
   }
 
+  // Encontrar adminUser no HTML da página
+  const adminUserMatch = html.match(/adminUser\s*=\s*(\{[^}]{0,500}\})/);
+  const adminUserRaw = adminUserMatch ? adminUserMatch[1] : null;
+
+  // Trechos em volta de adminUser nos scripts inline
+  const adminUserSnippets: string[] = [];
+  for (const sb of scriptBlocks) {
+    const inner = sb.replace(/<\/?script[^>]*>/gi, "");
+    const idx = inner.indexOf("adminUser");
+    if (idx >= 0) adminUserSnippets.push(inner.slice(Math.max(0, idx - 50), idx + 400));
+  }
+
   return NextResponse.json({
     pageSize: html.length,
-    metaTags,
-    jsTokenVars,
-    headSnippet,
+    adminUserRaw,
+    adminUserSnippets,
     xhrSnippets,
-    relatorioSnippets,
-    adminJsSize: adminJs.length,
   });
 }
