@@ -26,10 +26,18 @@ export async function GET(req: NextRequest) {
   const snippet = html.slice(0, 5000);
   const hasStudentList = html.includes("student-list-item");
   const dataSearchSamples = [...html.matchAll(/data-search="([^"]+)"/g)].slice(0, 5).map((m) => m[1]);
-  const firstCard = html.indexOf("student-list-item") !== -1
-    ? html.slice(html.indexOf("student-list-item") - 50, html.indexOf("student-list-item") + 800)
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    : "não encontrado";
+  // Find the main content area — look for table rows or list items
+  const bodyStart = html.indexOf("<main") !== -1 ? html.indexOf("<main") : html.indexOf('<div class="container');
+  const bodySnippet = html.slice(bodyStart, bodyStart + 6000).replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
 
-  return NextResponse.json({ hasStudentList, dataSearchSamples, firstCard, snippet });
+  // Look for any <tr> rows with data
+  const trSamples = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].slice(2, 8).map((m) => m[0].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+
+  // Look for mailto links (emails in table)
+  const emailSamples = [...html.matchAll(/mailto:([^"'<\s]+)/gi)].slice(0, 10).map((m) => m[1]);
+
+  // Look for expiration dates
+  const datePatterns = [...html.matchAll(/\d{2}\/\d{2}\/\d{4}/g)].slice(0, 10).map((m) => m[0]);
+
+  return NextResponse.json({ hasStudentList, dataSearchSamples, trSamples, emailSamples, datePatterns, bodySnippet });
 }
