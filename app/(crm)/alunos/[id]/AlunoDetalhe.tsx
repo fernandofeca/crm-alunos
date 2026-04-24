@@ -153,6 +153,8 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
   const [savingAtivo, setSavingAtivo] = useState(false);
   const [editandoTutoryId, setEditandoTutoryId] = useState(false);
   const [tutoryIdInput, setTutoryIdInput] = useState("");
+  const [editandoPlanilha, setEditandoPlanilha] = useState(false);
+  const [planilhaInput, setPlanilhaInput] = useState("");
   const [editandoDados, setEditandoDados] = useState(false);
   const [dadosForm, setDadosForm] = useState({ nome: "", email: "", cpf: "", whatsapp: "", concurso: "" });
   const [savingDados, setSavingDados] = useState(false);
@@ -339,21 +341,41 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
               </div>
 
               {/* Planilha Google Drive */}
-              {aluno.planilhaUrl && (
-                <div className="flex items-center gap-2 mt-1">
-                  <svg className="w-4 h-4 text-green-600 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19.5 3h-15A1.5 1.5 0 003 4.5v15A1.5 1.5 0 004.5 21h15a1.5 1.5 0 001.5-1.5v-15A1.5 1.5 0 0019.5 3zM8 17H6v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
-                  </svg>
-                  <a
-                    href={aluno.planilhaUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-green-700 hover:underline font-medium"
-                  >
-                    Planilha do Aluno
-                  </a>
-                </div>
-              )}
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {editandoPlanilha ? (
+                  <form className="flex items-center gap-1 flex-wrap" onSubmit={async (e) => {
+                    e.preventDefault();
+                    await patchAluno({ planilhaUrl: planilhaInput || null } as Partial<Aluno>);
+                    setEditandoPlanilha(false);
+                  }}>
+                    <input
+                      value={planilhaInput}
+                      onChange={e => setPlanilhaInput(e.target.value)}
+                      placeholder="Link do Google Sheets"
+                      className="border border-slate-300 rounded px-2 py-0.5 text-xs w-64 focus:outline-none focus:ring-1 focus:ring-green-500"
+                    />
+                    <button type="submit" className="text-xs text-green-600 hover:underline">Salvar</button>
+                    <button type="button" onClick={() => setEditandoPlanilha(false)} className="text-xs text-slate-400 hover:underline">Cancelar</button>
+                  </form>
+                ) : aluno.planilhaUrl ? (
+                  <>
+                    <svg className="w-4 h-4 text-green-600 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19.5 3h-15A1.5 1.5 0 003 4.5v15A1.5 1.5 0 004.5 21h15a1.5 1.5 0 001.5-1.5v-15A1.5 1.5 0 0019.5 3zM8 17H6v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                    </svg>
+                    <a href={aluno.planilhaUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-green-700 hover:underline font-medium">
+                      Planilha do Aluno
+                    </a>
+                    <button onClick={() => { setPlanilhaInput(aluno.planilhaUrl ?? ""); setEditandoPlanilha(true); }}
+                      className="text-xs text-slate-300 hover:text-slate-500">✏️</button>
+                  </>
+                ) : (
+                  <button onClick={() => { setPlanilhaInput(""); setEditandoPlanilha(true); }}
+                    className="text-xs text-slate-400 hover:text-green-600 hover:underline">
+                    + Vincular Planilha
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-4 self-start">
