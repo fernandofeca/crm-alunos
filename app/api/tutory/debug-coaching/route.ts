@@ -67,32 +67,53 @@ export async function GET(req: NextRequest) {
     .filter((s) => s.includes("relatorio") || s.includes("coaching") || s.includes("lote") || s.includes("dispararEmails"))
     .join("\n\n---\n\n");
 
-  // Trecho bruto em volta de "check" / "checkbox" / "input" na tabela
-  const rawCheckbox: string[] = [];
-  const checkIdx = html.indexOf("relatorio-aluno-check");
-  if (checkIdx >= 0) {
-    rawCheckbox.push(html.slice(Math.max(0, checkIdx - 200), checkIdx + 600));
+  // 1. Meta tags de token/csrf
+  const metaTags = [...html.matchAll(/<meta[^>]+>/gi)]
+    .map((m) => m[0])
+    .filter((t) => /token|csrf|_token/i.test(t));
+
+  // 2. Variáveis JS globais com "token"
+  const jsTokenVars: string[] = [];
+  for (const sb of scriptBlocks) {
+    const inner = sb.replace(/<\/?script[^>]*>/gi, "");
+    for (const m of inner.matchAll(/(?:var|let|const|window\.)[\w.]*[Tt]oken[\w.]*\s*=\s*['"`]([^'"`]{10,})['"`;]/g)) {
+      jsTokenVars.push(`${m[0].trim().slice(0, 200)}`);
+    }
   }
-  // Também em volta de qualquer <input type="checkbox"
-  const cbIdx = html.indexOf('type="checkbox"');
-  if (cbIdx >= 0) rawCheckbox.push(html.slice(Math.max(0, cbIdx - 100), cbIdx + 400));
 
-  // Todos os data-id encontrados em qualquer elemento
-  const allDataIds = [...html.matchAll(/data-id=["'](\d+)["']/g)].map((m) => m[1]).slice(0, 20);
+  // 3. Primeira 500 chars do <head> para ver meta tags
+  const headSnippet = html.slice(0, 2000);
 
-  // Todos os <input> com name ou class relacionados a aluno/check
-  const inputs = [...html.matchAll(/<input[^>]*(?:aluno|check|relatorio)[^>]*>/gi)].map((m) => m[0]).slice(0, 10);
+  // 4. Fetch tutory-admin-main.js para ver como XHRreq monta o token
+  const adminJs = await fetch("https://static.tutory.com.br/js/tutory-admin-main.js")
+    .then((r) => r.text())
+    .catch(() => "");
 
-  // Trecho da tabela (primeiros 3000 chars após <table)
-  const tableIdx = html.toLowerCase().indexOf("<table");
-  const tableSnippet = tableIdx >= 0 ? html.slice(tableIdx, tableIdx + 3000) : "(sem tabela)";
+  // Trechos relevantes do JS admin
+  const xhrSnippets: string[] = [];
+  let pos = 0;
+  while ((pos = adminJs.indexOf("token", pos)) >= 0) {
+    xhrSnippets.push(adminJs.slice(Math.max(0, pos - 100), pos + 200));
+    pos += 5;
+    if (xhrSnippets.length >= 8) break;
+  }
+
+  // Trechos em volta de "cadastrar-relatorio"
+  const relatorioSnippets: string[] = [];
+  pos = 0;
+  while ((pos = adminJs.indexOf("relatorio", pos)) >= 0) {
+    relatorioSnippets.push(adminJs.slice(Math.max(0, pos - 50), pos + 300));
+    pos += 8;
+    if (relatorioSnippets.length >= 5) break;
+  }
 
   return NextResponse.json({
     pageSize: html.length,
-    allDataIds,
-    inputs,
-    rawCheckbox,
-    tableSnippet,
-    inlineScriptCompleto: inlineScriptCompleto.slice(0, 500),
+    metaTags,
+    jsTokenVars,
+    headSnippet,
+    xhrSnippets,
+    relatorioSnippets,
+    adminJsSize: adminJs.length,
   });
 }
