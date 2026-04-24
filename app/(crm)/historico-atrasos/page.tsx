@@ -40,14 +40,15 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
 
   const semanaIso = semanaAtual?.toISOString();
 
-  // Filter by plano via aluno relation (students without CRM link are excluded when plano filter active)
   const snapshots = semanaAtual
     ? await prisma.snapshotAtraso.findMany({
         where: {
           semana: semanaAtual,
+          // Excluir alunos desativados manualmente (manter snapshots sem vínculo CRM)
+          NOT: { aluno: { ativo: false } },
           ...(planoParam ? { aluno: { planoTipo: planoParam } } : {}),
         },
-        include: { aluno: { select: { id: true, whatsapp: true, planoTipo: true, tutoryId: true } } },
+        include: { aluno: { select: { id: true, whatsapp: true, planoTipo: true, tutoryId: true, concurso: true } } },
         orderBy: { diasAtraso: "desc" },
       })
     : [];
@@ -138,6 +139,7 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
                     <tr>
                       <th className="text-left px-4 py-3">#</th>
                       <th className="text-left px-4 py-3">Aluno</th>
+                      <th className="text-left px-4 py-3">Concurso</th>
                       <th className="text-left px-4 py-3">Plano</th>
                       <th className="text-center px-4 py-3">Dias de atraso</th>
                       <th className="px-4 py-3"></th>
@@ -146,7 +148,7 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
                   <tbody className="divide-y divide-slate-100">
                     {snapshots.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                        <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                           Nenhum aluno encontrado para este filtro.
                         </td>
                       </tr>
@@ -167,6 +169,9 @@ export default async function HistoricoAtrasosPage({ searchParams }: { searchPar
                             <span className="font-medium text-slate-700">{s.nome}</span>
                           )}
                           <div className="text-xs text-slate-400">{s.email}</div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">
+                          {s.aluno?.concurso || <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-4 py-3 text-slate-500 text-xs">
                           {s.aluno?.planoTipo || <span className="text-slate-300">—</span>}
