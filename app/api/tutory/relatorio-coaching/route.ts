@@ -54,11 +54,11 @@ async function scraparIdsCoaching(adminCookie: string): Promise<string[]> {
   const ids = new Set<string>();
 
   function parsePage(html: string) {
-    for (const m of html.matchAll(/class="relatorio-aluno-check"[^>]*data-id="(\d+)"/g)) {
+    // Classe real: "custom-control-input relatorio-aluno-check" (sem -all)
+    for (const m of html.matchAll(/relatorio-aluno-check"[^>]*data-id="(\d+)"/g)) {
       ids.add(m[1]);
     }
-    // fallback: qualquer data-id em checkboxes da tabela
-    for (const m of html.matchAll(/data-id="(\d+)"[^>]*class="relatorio-aluno-check"/g)) {
+    for (const m of html.matchAll(/data-id="(\d+)"[^>]*relatorio-aluno-check"/g)) {
       ids.add(m[1]);
     }
   }
@@ -70,12 +70,14 @@ async function scraparIdsCoaching(adminCookie: string): Promise<string[]> {
   if (firstHtml.includes('document.location.href = "/login"')) return [];
   parsePage(firstHtml);
 
-  const totalMatch = firstHtml.match(/\?p=(\d+)[^"]*">Última/) ?? firstHtml.match(/Mostrando entre \d+ e \d+ de (\d+)/);
+  // Tenta link "Última ?p=N" primeiro; senão usa "Mostrando entre X e Y de TOTAL"
+  const ultimaMatch = firstHtml.match(/\?p=(\d+)[^"]*"[^>]*>\s*[ÚU]ltima/);
+  const totalAlunosMatch = firstHtml.match(/Mostrando entre \d+ e \d+ de (\d+)/);
   let totalPages = 1;
-  if (totalMatch) {
-    // se encontrou link "Última" usa o número de páginas, senão estima
-    const n = parseInt(totalMatch[1], 10);
-    totalPages = firstHtml.includes("Última") ? n : Math.ceil(n / 100);
+  if (ultimaMatch) {
+    totalPages = parseInt(ultimaMatch[1], 10);
+  } else if (totalAlunosMatch) {
+    totalPages = Math.ceil(parseInt(totalAlunosMatch[1], 10) / 100);
   }
 
   // Busca em paralelo (lotes de 5)
