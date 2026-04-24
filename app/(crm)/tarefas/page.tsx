@@ -15,6 +15,7 @@ type Tarefa = {
   aluno: Aluno | null;
   user: { id: string; name: string };
   responsavel: { id: string; name: string } | null;
+  responsavel2: { id: string; name: string } | null;
   createdAt: string;
 };
 
@@ -41,23 +42,29 @@ export default function TarefasPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [filtro, setFiltro] = useState<"pendentes" | "concluidas" | "todas">("pendentes");
+  const [filtroUsuario, setFiltroUsuario] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [form, setForm] = useState({
     titulo: "", descricao: "", prioridade: "media",
-    dataVencimento: "", alunoId: "", responsavelId: "",
+    dataVencimento: "", alunoId: "", responsavelId: "", responsavel2Id: "",
   });
 
   useEffect(() => {
-    carregar();
     fetch("/api/usuarios").then((r) => r.json()).then(setUsuarios);
     fetch("/api/alunos?todos=true").then((r) => r.json()).then(setAlunos);
   }, []);
 
+  useEffect(() => {
+    carregar();
+  }, [filtroUsuario]);
+
   async function carregar() {
     setLoading(true);
-    const res = await fetch("/api/tarefas");
+    const params = new URLSearchParams();
+    if (filtroUsuario) params.set("usuarioId", filtroUsuario);
+    const res = await fetch(`/api/tarefas?${params}`);
     if (res.ok) setTarefas(await res.json());
     setLoading(false);
   }
@@ -74,7 +81,7 @@ export default function TarefasPage() {
     if (res.ok) {
       const nova = await res.json();
       setTarefas((prev) => [nova, ...prev]);
-      setForm({ titulo: "", descricao: "", prioridade: "media", dataVencimento: "", alunoId: "", responsavelId: "" });
+      setForm({ titulo: "", descricao: "", prioridade: "media", dataVencimento: "", alunoId: "", responsavelId: "", responsavel2Id: "" });
       setMostrarForm(false);
     }
     setSalvando(false);
@@ -125,7 +132,7 @@ export default function TarefasPage() {
           <textarea placeholder="Descrição (opcional)" rows={2}
             value={form.descricao} onChange={(e) => setForm((p) => ({ ...p, descricao: e.target.value }))}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs text-slate-500 mb-1 block">Prioridade</label>
               <select value={form.prioridade} onChange={(e) => setForm((p) => ({ ...p, prioridade: e.target.value }))}
@@ -142,7 +149,15 @@ export default function TarefasPage() {
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="text-xs text-slate-500 mb-1 block">Responsável</label>
+              <label className="text-xs text-slate-500 mb-1 block">Aluno (opcional)</label>
+              <select value={form.alunoId} onChange={(e) => setForm((p) => ({ ...p, alunoId: e.target.value }))}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">— Nenhum —</option>
+                {alunos.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Responsável 1</label>
               <select value={form.responsavelId} onChange={(e) => setForm((p) => ({ ...p, responsavelId: e.target.value }))}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">— Ninguém —</option>
@@ -150,11 +165,11 @@ export default function TarefasPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-slate-500 mb-1 block">Aluno (opcional)</label>
-              <select value={form.alunoId} onChange={(e) => setForm((p) => ({ ...p, alunoId: e.target.value }))}
+              <label className="text-xs text-slate-500 mb-1 block">Responsável 2</label>
+              <select value={form.responsavel2Id} onChange={(e) => setForm((p) => ({ ...p, responsavel2Id: e.target.value }))}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">— Nenhum —</option>
-                {alunos.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                <option value="">— Ninguém —</option>
+                {usuarios.filter((u) => u.id !== form.responsavelId).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
           </div>
@@ -169,8 +184,8 @@ export default function TarefasPage() {
         </form>
       )}
 
-      {/* Filtros */}
-      <div className="flex gap-2">
+      {/* Filtros de status */}
+      <div className="flex flex-wrap gap-2">
         {([
           ["pendentes", `Pendentes (${pendentes})`],
           ["concluidas", `Concluídas (${concluidas})`],
@@ -184,6 +199,27 @@ export default function TarefasPage() {
           </button>
         ))}
       </div>
+
+      {/* Filtro por usuário */}
+      {usuarios.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-xs text-slate-400 font-medium">Responsável:</span>
+          <button onClick={() => setFiltroUsuario("")}
+            className={`px-3 py-1 rounded-lg text-xs font-medium border transition ${
+              filtroUsuario === "" ? "bg-slate-700 text-white border-slate-700" : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
+            }`}>
+            Todos
+          </button>
+          {usuarios.map((u) => (
+            <button key={u.id} onClick={() => setFiltroUsuario(filtroUsuario === u.id ? "" : u.id)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium border transition ${
+                filtroUsuario === u.id ? "bg-blue-600 text-white border-blue-600" : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
+              }`}>
+              {u.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading && <p className="text-sm text-slate-400">Carregando...</p>}
 
@@ -223,12 +259,14 @@ export default function TarefasPage() {
               </div>
               {t.descricao && <p className="text-xs text-slate-500 truncate mb-1">{t.descricao}</p>}
               <div className="flex flex-wrap gap-3 text-xs text-slate-400">
-                {t.responsavel && (
+                {(t.responsavel || t.responsavel2) && (
                   <span className="flex items-center gap-1">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
-                    <span className="text-blue-600 font-medium">{t.responsavel.name}</span>
+                    <span className="text-blue-600 font-medium">
+                      {[t.responsavel?.name, t.responsavel2?.name].filter(Boolean).join(" + ")}
+                    </span>
                   </span>
                 )}
                 {t.aluno && (

@@ -6,6 +6,7 @@ const include = {
   aluno: { select: { id: true, nome: true } },
   user: { select: { id: true, name: true } },
   responsavel: { select: { id: true, name: true } },
+  responsavel2: { select: { id: true, name: true } },
 };
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -23,6 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.dataVencimento !== undefined) campos.dataVencimento = body.dataVencimento ? new Date(body.dataVencimento) : null;
   if (body.alunoId !== undefined) campos.alunoId = body.alunoId || null;
   if (body.responsavelId !== undefined) campos.responsavelId = body.responsavelId || null;
+  if (body.responsavel2Id !== undefined) campos.responsavel2Id = body.responsavel2Id || null;
 
   const tarefa = await prisma.tarefa.update({ where: { id }, data: campos, include });
   return NextResponse.json(tarefa);

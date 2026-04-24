@@ -6,6 +6,7 @@ const include = {
   aluno: { select: { id: true, nome: true } },
   user: { select: { id: true, name: true } },
   responsavel: { select: { id: true, name: true } },
+  responsavel2: { select: { id: true, name: true } },
 };
 
 export async function GET(req: NextRequest) {
@@ -14,10 +15,18 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl;
   const concluida = searchParams.get("concluida");
+  const usuarioId = searchParams.get("usuarioId");
 
   const where: Record<string, unknown> = {};
   if (concluida === "true") where.concluida = true;
   else if (concluida === "false") where.concluida = false;
+
+  if (usuarioId) {
+    where.OR = [
+      { responsavelId: usuarioId },
+      { responsavel2Id: usuarioId },
+    ];
+  }
 
   const tarefas = await prisma.tarefa.findMany({
     where,
@@ -41,6 +50,7 @@ export async function POST(req: NextRequest) {
       dataVencimento: body.dataVencimento ? new Date(body.dataVencimento) : null,
       alunoId: body.alunoId || null,
       responsavelId: body.responsavelId || null,
+      responsavel2Id: body.responsavel2Id || null,
       userId: (session.user?.id ?? "") as string,
     },
     include,

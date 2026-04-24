@@ -1,0 +1,1 @@
+ALTER TABLE "Tarefa" ADD COLUMN "responsavel2Id" TEXT REFERENCES "User"("id") ON DELETE SET NULL;

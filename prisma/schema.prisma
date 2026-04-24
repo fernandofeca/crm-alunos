@@ -16,6 +16,7 @@ model User {
   contatos              Contato[]
   tarefas               Tarefa[]  @relation("TarefaCriador")
   tarefasAtribuidas     Tarefa[]  @relation("TarefaResponsavel")
+  tarefasAtribuidas2    Tarefa[]  @relation("TarefaResponsavel2")
   eventos               Evento[]
   googleRefreshToken    String?
   createdAt             DateTime  @default(now())
@@ -103,6 +104,8 @@ model Tarefa {
   user            User      @relation("TarefaCriador", fields: [userId], references: [id])
   responsavelId   String?
   responsavel     User?     @relation("TarefaResponsavel", fields: [responsavelId], references: [id])
+  responsavel2Id  String?
+  responsavel2    User?     @relation("TarefaResponsavel2", fields: [responsavel2Id], references: [id])
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }

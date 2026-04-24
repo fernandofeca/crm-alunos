@@ -31,6 +31,7 @@ const migrations = [
   "../prisma/migrations/20260423000001_aluno_briefing/migration.sql",
   "../prisma/migrations/20260424000000_snapshot_atraso/migration.sql",
   "../prisma/migrations/20260424000001_aluno_planilha_url/migration.sql",
+  "../prisma/migrations/20260424000002_tarefa_responsavel2/migration.sql",
 ];
 
 for (const file of migrations) {
