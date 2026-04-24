@@ -98,26 +98,32 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<{ nome: string; id
     const appPhpsessid = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
     const location = verRes.headers.get("location") ?? "https://app.tutory.com.br/painel/";
 
-    // 2. Seguir o redirect — carrega a página do painel, que cria a notificação server-side
+    // 2. Seguir o redirect — carrega a página do painel e captura PHPSESSID atualizado
+    let sessionCookie = appPhpsessid;
     if (appPhpsessid) {
-      await fetch(location.startsWith("http") ? location : `https://app.tutory.com.br${location}`, {
+      const panelUrl = location.startsWith("http") ? location : `https://app.tutory.com.br${location}`;
+      const panelRes = await fetch(panelUrl, {
         method: "GET",
         headers: {
           Cookie: appPhpsessid,
           Accept: "text/html,application/xhtml+xml",
           Referer: "https://app.tutory.com.br/intent/ver-painel",
         },
+        redirect: "manual",
       });
+      // Usar PHPSESSID atualizado se o servidor enviou um novo
+      const updatedCookie = panelRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
+      if (updatedCookie) sessionCookie = updatedCookie;
     }
 
-    // 3. selecionar-notificacoes — processa a notificação de replanejamento criada
+    // 3. selecionar-notificacoes com o PHPSESSID final (atualizado pelo painel)
     const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${aluno.token}`,
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         Accept: "*/*",
-        ...(appPhpsessid ? { Cookie: appPhpsessid } : {}),
+        ...(sessionCookie ? { Cookie: sessionCookie } : {}),
         Origin: "https://app.tutory.com.br",
         Referer: "https://app.tutory.com.br/painel/",
       },
@@ -182,12 +188,37 @@ export async function GET(req: NextRequest) {
     const primeiro = alunos[0];
     if (!primeiro) return NextResponse.json({ error: "Nenhum aluno na lista" });
 
-    const resultado = await replanejamentoAluno(primeiro);
+    // Debug detalhado passo a passo
+    const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest", Origin: "https://app.tutory.com.br", Referer: "https://admin.tutory.com.br/alunos/atraso" },
+      body: `cpf=${encodeURIComponent(primeiro.cpf)}&id=${primeiro.id}&token=${encodeURIComponent(primeiro.token)}&adm_id=${primeiro.admId}`,
+      redirect: "manual",
+    });
+    const phpsessid1 = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+    const location = verRes.headers.get("location") ?? "https://app.tutory.com.br/painel/";
+
+    const panelRes = await fetch(location.startsWith("http") ? location : `https://app.tutory.com.br${location}`, {
+      method: "GET",
+      headers: { Cookie: phpsessid1, Accept: "text/html,application/xhtml+xml", Referer: "https://app.tutory.com.br/intent/ver-painel" },
+      redirect: "manual",
+    });
+    const phpsessid2 = panelRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+    const sessionFinal = phpsessid2 || phpsessid1;
+
+    const notifRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${primeiro.token}`, "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", Cookie: sessionFinal, Origin: "https://app.tutory.com.br", Referer: "https://app.tutory.com.br/painel/" },
+      body: `id=${primeiro.id}`,
+    });
+    const notifJson = await notifRes.json().catch(() => null);
 
     return NextResponse.json({
       totalAlunos: alunos.length,
-      primeiroAluno: { nome: primeiro.nome, id: primeiro.id, cpf: primeiro.cpf.slice(0, 3) + "****" },
-      resultado,
+      primeiroAluno: { nome: primeiro.nome, id: primeiro.id },
+      verPainel: { status: verRes.status, phpsessid1: !!phpsessid1, location },
+      panelPage: { status: panelRes.status, phpsessid2Obtido: !!phpsessid2, cookieAtualizado: !!phpsessid2 },
+      selecionarNotificacoes: { status: notifRes.status, data: notifJson },
     });
   }
 
