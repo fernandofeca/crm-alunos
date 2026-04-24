@@ -1,14 +1,15 @@
 /**
  * Replanejamento de Cronogramas
  *
- * Teste decisivo: visitar /painel/ duas vezes.
- * - Se swal desaparece na 2ª visita → o PHP processa o replan na 1ª visita (automação funciona)
- * - Se swal ainda aparece na 2ª visita → o PHP não processa na visita do servidor, precisamos de outra abordagem
+ * Mecanismo confirmado pelo debug (2025-04-24):
+ *   Visitar GET /painel/ com PHPSESSID do aluno (obtido via ver-painel)
+ *   faz o PHP processar o replanejamento server-side na primeira visita.
+ *   Na segunda visita o swal "Cronograma Replanejado" não aparece mais
+ *   e o aluno some da lista /alunos/atraso automaticamente.
  *
- * Outros achados dos debugs anteriores:
- * - admin:0 não é possível via ver-painel (sempre admin:1)
- * - excluir-notificacao funciona com NOT_ID mas só remove notifs de mural
- * - o swal "Cronograma Replanejado" é um mecanismo separado do sistema de notificações
+ * Fluxo por aluno:
+ *  1. POST ver-painel (cpf + id + token + adm_id) → PHPSESSID do app.tutory.com.br
+ *  2. GET /painel/ com esse PHPSESSID → PHP processa o replanejamento
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -86,25 +87,10 @@ async function scraparFormularios(adminCookie: string): Promise<AlunoForm[]> {
   return result;
 }
 
-function extrairJsAlunoId(html: string): string | null {
-  return (
-    html.match(/jsAluno\s*=\s*\{[^}]*?\bid\s*:\s*['"]?(\d+)['"]?/i)?.[1] ??
-    html.match(/jsAluno\.id\s*=\s*['"]?(\d+)['"]?/i)?.[1] ??
-    null
-  );
-}
-
-interface NotifEntry {
-  NOT_ID?: string | number;
-  [key: string]: unknown;
-}
-
 interface ReplanejamentoResult {
   nome: string;
   id: string;
-  status: string;
-  notificacoes?: NotifEntry[];
-  excluidos?: (string | number)[];
+  status: number | string;
 }
 
 async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResult> {
@@ -122,79 +108,27 @@ async function replanejamentoAluno(aluno: AlunoForm): Promise<ReplanejamentoResu
       redirect: "manual",
     });
 
-    let sessionCookie = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+    const sessionCookie = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
     const location = verRes.headers.get("location") ?? "/painel/";
     const panelUrl = location.startsWith("http") ? location : `https://app.tutory.com.br${location}`;
 
-    if (!sessionCookie) return { nome: aluno.nome, id: aluno.id, status: "sem-sessão" };
+    if (!sessionCookie) {
+      return { nome: aluno.nome, id: aluno.id, status: "sem-sessão" };
+    }
 
-    // 2. Visitar /painel/ (1ª visita — PHP gera o swal e pode processar o replan)
-    const painel1 = await fetch(panelUrl, {
+    // 2. GET /painel/ → PHP processa o replanejamento server-side
+    const panelRes = await fetch(panelUrl, {
       headers: {
         Cookie: sessionCookie,
         "User-Agent": BROWSER_UA,
-        Accept: "text/html,application/xhtml+xml",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9",
         Referer: "https://app.tutory.com.br/intent/ver-painel",
       },
       redirect: "follow",
     });
-    const updated1 = painel1.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
-    if (updated1) sessionCookie = updated1;
-    const html1 = await painel1.text();
 
-    const jsAlunoId = extrairJsAlunoId(html1) ?? aluno.id;
-
-    const headers = {
-      Authorization: `Bearer ${aluno.token}`,
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      Accept: "application/json, */*",
-      "X-Requested-With": "XMLHttpRequest",
-      Cookie: sessionCookie,
-      Origin: "https://app.tutory.com.br",
-      Referer: panelUrl,
-    };
-
-    // 3. selecionar-notificacoes → lista com NOT_ID
-    const selecionarRes = await fetch("https://app.tutory.com.br/intent/selecionar-notificacoes", {
-      method: "POST",
-      headers,
-      body: `id=${jsAlunoId}`,
-    });
-    const selecionarData = await selecionarRes.json().catch(() => null) as { data?: NotifEntry[] } | null;
-    const notificacoes: NotifEntry[] = Array.isArray(selecionarData?.data) ? selecionarData!.data : [];
-
-    // 4. excluir cada notificação pelo NOT_ID
-    const excluidos: (string | number)[] = [];
-    for (const notif of notificacoes) {
-      const notifId = notif.NOT_ID;
-      if (!notifId) continue;
-      const excluirRes = await fetch("https://app.tutory.com.br/intent/excluir-notificacao", {
-        method: "POST",
-        headers,
-        body: `id=${jsAlunoId}&notificacao_id=${notifId}`,
-      });
-      if (excluirRes.ok) excluidos.push(notifId);
-    }
-
-    // 5. Visitar /painel/config/replanejar-atrasos (confirma o replanejamento)
-    await fetch("https://app.tutory.com.br/painel/config/replanejar-atrasos", {
-      method: "GET",
-      headers: {
-        Cookie: sessionCookie,
-        "User-Agent": BROWSER_UA,
-        Accept: "text/html,application/xhtml+xml",
-        Referer: panelUrl,
-      },
-      redirect: "follow",
-    });
-
-    return {
-      nome: aluno.nome,
-      id: aluno.id,
-      status: "ok",
-      notificacoes,
-      excluidos,
-    };
+    return { nome: aluno.nome, id: aluno.id, status: panelRes.status };
   } catch (e) {
     return { nome: aluno.nome, id: aluno.id, status: String(e) };
   }
@@ -219,6 +153,7 @@ async function executarReplanejamento() {
 
   const resultados: ReplanejamentoResult[] = [];
 
+  // Lotes de 3 com 600ms de intervalo para não sobrecarregar o Tutory
   for (let i = 0; i < alunos.length; i += 3) {
     const lote = alunos.slice(i, i + 3);
     const resps = await Promise.all(lote.map(replanejamentoAluno));
@@ -226,19 +161,26 @@ async function executarReplanejamento() {
     if (i + 3 < alunos.length) await new Promise((r) => setTimeout(r, 600));
   }
 
-  const falhas = resultados.filter((r) => r.status !== "ok");
+  const sucessos = resultados.filter(
+    (r) => typeof r.status === "number" && r.status < 400
+  ).length;
+
+  const falhas = resultados.filter(
+    (r) => typeof r.status !== "number" || r.status >= 400
+  );
 
   return NextResponse.json({
     ok: true,
     total: alunos.length,
-    replanejados: resultados.length - falhas.length,
-    falhas,
+    replanejados: sucessos,
+    falhas: falhas.length > 0 ? falhas : undefined,
+    nota: "Alunos saem da lista do Tutory em poucos minutos após o processamento",
     executadoEm: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
   });
 }
 
-// GET ?key=cg-bulk-2026&debug=1  → teste decisivo: swal na 2ª visita ao painel?
-// GET ?key=cg-bulk-2026           → cron (background)
+// GET ?key=cg-bulk-2026&debug=1  → testa o fluxo completo no 1º aluno
+// GET ?key=cg-bulk-2026           → cron (background, resposta imediata)
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
@@ -249,7 +191,7 @@ export async function GET(req: NextRequest) {
 
     const alunos = await scraparFormularios(adminCookie);
     const primeiro = alunos[0];
-    if (!primeiro) return NextResponse.json({ error: "Nenhum aluno na lista" });
+    if (!primeiro) return NextResponse.json({ msg: "Nenhum aluno atrasado na lista do Tutory" });
 
     // ver-painel → sessão
     const verRes = await fetch("https://app.tutory.com.br/intent/ver-painel", {
@@ -263,60 +205,49 @@ export async function GET(req: NextRequest) {
       body: `cpf=${encodeURIComponent(primeiro.cpf)}&id=${primeiro.id}&token=${encodeURIComponent(primeiro.token)}&adm_id=${primeiro.admId}`,
       redirect: "manual",
     });
-    let sessionCookie = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
+    const sessionCookie = verRes.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
     const location = verRes.headers.get("location") ?? "/painel/";
     const panelUrl = location.startsWith("http") ? location : `https://app.tutory.com.br${location}`;
 
-    const panelHeaders = {
-      Cookie: sessionCookie,
-      "User-Agent": BROWSER_UA,
-      Accept: "text/html,application/xhtml+xml",
-      Referer: "https://app.tutory.com.br/intent/ver-painel",
-    };
+    if (!sessionCookie) {
+      return NextResponse.json({ erro: "ver-painel não retornou PHPSESSID" });
+    }
 
-    // ── 1ª visita ao painel ──
-    const painel1Res = await fetch(panelUrl, { headers: panelHeaders, redirect: "follow" });
-    const updated1 = painel1Res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0];
-    if (updated1) sessionCookie = updated1;
-    const html1 = await painel1Res.text();
+    // 1ª visita
+    const html1 = await fetch(panelUrl, {
+      headers: { Cookie: sessionCookie, "User-Agent": BROWSER_UA, Accept: "text/html,application/xhtml+xml" },
+      redirect: "follow",
+    }).then((r) => r.text());
     const swal1 = html1.includes("Cronograma Replanejado");
 
-    // Aguardar 2 segundos antes da 2ª visita
     await new Promise((r) => setTimeout(r, 2000));
 
-    // ── 2ª visita ao painel (mesma sessão) ──
-    const painel2Res = await fetch(panelUrl, {
-      headers: { ...panelHeaders, Cookie: sessionCookie, Referer: panelUrl },
+    // 2ª visita (confirma se processou)
+    const html2 = await fetch(panelUrl, {
+      headers: { Cookie: sessionCookie, "User-Agent": BROWSER_UA, Accept: "text/html,application/xhtml+xml", Referer: panelUrl },
       redirect: "follow",
-    });
-    const html2 = await painel2Res.text();
+    }).then((r) => r.text());
     const swal2 = html2.includes("Cronograma Replanejado");
 
-    // ── Verificar admin list: o aluno ainda está em /alunos/atraso? ──
+    // Aluno ainda na lista admin?
     const listaHtml = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", {
       headers: { Cookie: adminCookie },
     }).then((r) => r.text());
     const nomeNaLista = listaHtml.toLowerCase().includes(primeiro.nome.toLowerCase().split(" ")[0]);
 
-    // ── Tela de /painel/config/replanejar-atrasos ──
-    const replanHtml = await fetch("https://app.tutory.com.br/painel/config/replanejar-atrasos", {
-      headers: { Cookie: sessionCookie, "User-Agent": BROWSER_UA, Accept: "text/html,application/xhtml+xml", Referer: panelUrl },
-      redirect: "follow",
-    }).then((r) => r.text());
-    const swalReplan = replanHtml.includes("Cronograma Replanejado");
-
     return NextResponse.json({
+      totalAtrasados: alunos.length,
       primeiroAluno: { nome: primeiro.nome, id: primeiro.id },
-      painel1: { swalAparece: swal1 },
-      painel2: { swalAparece: swal2, interpretacao: swal2 ? "PHP NÃO processou o replan na 1ª visita" : "PHP processou o replan na 1ª visita! ✓" },
-      replanejArAtrasos: { swalAparece: swalReplan },
-      adminList: { nomeAindaNaLista: nomeNaLista },
-      conclusao: swal2
-        ? "Visitação do servidor NÃO dispara o replan — precisamos de outro mecanismo"
-        : "Visitação dispara o replan — automação funciona, usuário deve verificar após alguns minutos",
+      visita1: { swalReplanejado: swal1 },
+      visita2: { swalReplanejado: swal2 },
+      alunoAindaNaLista: nomeNaLista,
+      resultado: !swal2
+        ? "✓ PHP processou o replan — aluno deve sair da lista em instantes"
+        : "✗ PHP não processou — investigar",
     });
   }
 
+  // Cron: dispara em background e retorna imediatamente
   executarReplanejamento().catch((e) => console.error("[replanejamento-bg]", e));
   return NextResponse.json({
     ok: true,
