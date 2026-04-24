@@ -28,6 +28,7 @@ type Aluno = {
   assuntoMaisBaixoNota: number;
   diasAtraso: number;
   tutoryId: number | null;
+  planilhaUrl: string | null;
   dataNascimento: string | null;
   cidade: string;
   estado: string;
@@ -336,7 +337,25 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
                     className="text-xs text-slate-300 hover:text-slate-500">✏️</button>
                 )}
               </div>
+
+              {/* Planilha Google Drive */}
+              {aluno.planilhaUrl && (
+                <div className="flex items-center gap-2 mt-1">
+                  <svg className="w-4 h-4 text-green-600 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.5 3h-15A1.5 1.5 0 003 4.5v15A1.5 1.5 0 004.5 21h15a1.5 1.5 0 001.5-1.5v-15A1.5 1.5 0 0019.5 3zM8 17H6v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                  </svg>
+                  <a
+                    href={aluno.planilhaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-green-700 hover:underline font-medium"
+                  >
+                    Planilha do Aluno
+                  </a>
+                </div>
+              )}
             </div>
+
             <div className="flex items-center gap-4 self-start">
               <label className="flex items-center gap-2 cursor-pointer select-none bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
                 <input

@@ -47,6 +47,7 @@ model Aluno {
   acompanharDePerto   Boolean  @default(false)
   ultimoContatoData   DateTime?
   dataNascimento      DateTime?
+  planilhaUrl         String?
   cidade              String   @default("")
   estado              String   @default("")
   endereco            String   @default("")
