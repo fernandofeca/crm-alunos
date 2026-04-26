@@ -72,9 +72,12 @@ function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
   if (typeof dados.totalAlunos === "number") resumo.push(`${dados.totalAlunos} alunos`);
   if (typeof dados.emailsEnviados === "number") resumo.push(`${dados.emailsEnviados} emails enviados`);
   if (typeof dados.vinculados === "number") resumo.push(`${dados.vinculados} vinculados`);
+  if (typeof dados.cursosComDados === "number") resumo.push(`${dados.cursosComDados} cursos processados`);
   if (typeof dados.semMatch === "number" && dados.semMatch > 0) resumo.push(`${dados.semMatch} sem match`);
   if (typeof dados.semUrl === "number" && dados.semUrl > 0)
     resumo.push(`⚠️ ${dados.semUrl} sem URL de painel`);
+  if (typeof dados.elapsed === "number") resumo.push(`${dados.elapsed}s`);
+  if (dados.timedOut === true) resumo.push("⚠️ interrompido por timeout");
   if (typeof dados.executadoEm === "string") resumo.push(dados.executadoEm as string);
   if (typeof dados.msg === "string") resumo.push(dados.msg as string);
 
@@ -82,6 +85,11 @@ function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
     <div className="mt-2 text-xs">
       {resumo.length > 0 && (
         <p className="text-green-700">{resumo.join(" · ")}</p>
+      )}
+      {dados.timedOut === true && typeof dados.proximoOffset === "number" && (
+        <p className="text-amber-600 mt-1">
+          Continue com: <span className="font-mono">?offset={dados.proximoOffset as number}</span>
+        </p>
       )}
       <button
         onClick={() => setAberto((v) => !v)}
