@@ -19,61 +19,68 @@ export async function GET(req: NextRequest) {
   const cookie = await getSessionCookie();
   if (!cookie) return NextResponse.json({ error: "Login falhou" }, { status: 500 });
 
-  // 1. Página principal — extrai todos os cursos do select
-  const htmlPrincipal = await fetch("https://admin.tutory.com.br/cursos/relatorios", {
-    headers: { Cookie: cookie },
-  }).then((r) => r.text());
+  // Pega o concurso do query param, ou usa o primeiro disponível
+  let cursoId = req.nextUrl.searchParams.get("concurso") ?? "";
 
-  const cursos: { id: string; nome: string }[] = [];
-  const selectMatch = htmlPrincipal.match(/<select[^>]*select-concurso[^>]*>([\s\S]*?)<\/select>/i);
-  if (selectMatch) {
-    for (const m of selectMatch[1].matchAll(/<option[^>]*value=["'](\d+)["'][^>]*>\s*([^<]+)/gi)) {
-      if (m[1] !== "0") cursos.push({ id: m[1], nome: m[2].trim() });
-    }
+  if (!cursoId) {
+    const htmlPrincipal = await fetch("https://admin.tutory.com.br/cursos/relatorios", {
+      headers: { Cookie: cookie },
+    }).then((r) => r.text());
+    const m = htmlPrincipal.match(/<option[^>]*value=["'](\d+)["']/i);
+    cursoId = m?.[1] ?? "28399";
   }
 
-  // 2. Busca a página do PRIMEIRO curso para inspecionar estrutura
-  const primeiroCurso = cursos[0];
-  if (!primeiroCurso) return NextResponse.json({ cursos, erro: "Nenhum curso encontrado no select" });
-
-  const htmlCurso = await fetch(
-    `https://admin.tutory.com.br/cursos/relatorios?concurso=${primeiroCurso.id}`,
+  const html = await fetch(
+    `https://admin.tutory.com.br/cursos/relatorios?concurso=${cursoId}`,
     { headers: { Cookie: cookie } }
   ).then((r) => r.text());
 
-  // 3. Inspeciona a página do curso
-  const links    = [...htmlCurso.matchAll(/href=["']([^"']+)["']/gi)].map((m) => m[1]).filter((u) => u.startsWith("/") && u !== "#!");
-  const dataAttrs = [...htmlCurso.matchAll(/data-[\w-]+=["']([^"']+)["']/gi)].map((m) => m[0]);
-  const intentUrls = [...new Set([...htmlCurso.matchAll(/["'`](\/intent\/[^"'`\s?#]+)/g)].map((m) => m[1]))];
-  const scriptsInline = [...htmlCurso.matchAll(/<script(?!\s+src)[^>]*>([\s\S]*?)<\/script>/gi)]
-    .map((m) => m[1].trim())
-    .filter((s) => s.length > 10);
+  // 1. Todos os hrefs que parecem downloads ou relatórios
+  const hrefsRelevantes = [...html.matchAll(/href=["']([^"']+)["']/gi)]
+    .map((m) => m[1])
+    .filter((u) => /download|xls|csv|relat|aluno|export|planilha/i.test(u));
 
-  // Linhas da tabela de alunos (se existir)
-  const tabelaMatch = htmlCurso.match(/<table[\s\S]*?<\/table>/gi) ?? [];
-  const tabelas = tabelaMatch.map((t) => t.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 500));
+  // 2. Todos os <a> completos (tag inteira) que contêm palavras-chave
+  const anchorsTodos = [...html.matchAll(/<a[^>]*>[\s\S]*?<\/a>/gi)]
+    .map((m) => m[0].replace(/\s+/g, " ").trim())
+    .filter((a) => /download|xls|aluno|relat|export|planilha/i.test(a))
+    .slice(0, 20);
 
-  // Trecho ao redor de "aluno" e "relat"
-  const palavras = ["aluno", "relat", "download", "export", "xls", "intent", "fetch", "ajax", "email", "data-id"];
-  const trechos: string[] = [];
-  const lower = htmlCurso.toLowerCase();
-  for (const p of palavras) {
-    const idx = lower.indexOf(p);
-    if (idx >= 0) {
-      trechos.push(`[${p}@${idx}] ${htmlCurso.slice(Math.max(0, idx - 80), idx + 300).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ")}`);
-    }
-  }
+  // 3. Todos os botões com onclick
+  const botoesOnclick = [...html.matchAll(/<(?:a|button)[^>]*onclick=["']([^"']+)["'][^>]*>([^<]*)/gi)]
+    .map((m) => ({ onclick: m[1], texto: m[2].trim() }))
+    .slice(0, 20);
+
+  // 4. Seção bruta entre 55000 e htmlLength (onde ficam os relatórios)
+  const secaoRelatorios = html
+    .slice(55000)
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "[SCRIPT]")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 3000);
+
+  // 5. Todos os data-* que contêm URL ou ID
+  const dataComValor = [...html.matchAll(/data-[\w-]+=["']([^"']{3,})["']/gi)]
+    .map((m) => m[0])
+    .filter((d) => /\d|http|\/|relat|aluno|xls/i.test(d))
+    .slice(0, 30);
+
+  // 6. Procura padrões de URL de download nos scripts inline
+  const urlsNosScripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)]
+    .flatMap((m) => [...m[1].matchAll(/["'`]([^"'`]*(?:download|relat|aluno|xls|export)[^"'`]*)["'`]/gi)].map((u) => u[1]))
+    .slice(0, 20);
 
   return NextResponse.json({
-    totalCursos: cursos.length,
-    cursos: cursos.slice(0, 10), // primeiros 10
-    primeiroCursoInspecionado: primeiroCurso,
-    htmlCursoLength: htmlCurso.length,
-    links: [...new Set(links)].slice(0, 30),
-    dataAttrs: dataAttrs.slice(0, 20),
-    intentUrls,
-    scriptsInline: scriptsInline.slice(0, 5),
-    tabelas: tabelas.slice(0, 3),
-    trechos: trechos.slice(0, 15),
+    cursoId,
+    htmlLength: html.length,
+    hrefsRelevantes,
+    anchorsTodos,
+    botoesOnclick,
+    dataComValor,
+    urlsNosScripts,
+    secaoRelatorios,
   });
 }
