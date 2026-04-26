@@ -85,13 +85,13 @@ async function fetchNfseMes(token: string, dataIni: Date, dataFim: Date): Promis
       idEmpresa:  EMPRESA_ID,
       dataInicio: ini,
       dataFim:    fim,
-    }) as { content?: Array<{ status: string; servico?: { valorLiquido?: number } }>; totalPages?: number } | null;
+    }) as { content?: Array<{ status: string; valorLiquido?: number; servico?: { valorLiquido?: number } }>; totalPages?: number } | null;
     if (!data) break;
     const content    = data.content ?? [];
     const totalPages = data.totalPages ?? 1;
     for (const nota of content) {
       if (nota.status === "CANCELADA") continue;
-      total += nota.servico?.valorLiquido ?? 0;
+      total += nota.valorLiquido ?? nota.servico?.valorLiquido ?? 0;
     }
     hasMore = page < totalPages;
     page++;
@@ -129,7 +129,7 @@ async function fetchNfeMes(token: string, dataIni: Date, dataFim: Date): Promise
       // notas vêm em ordem decrescente — parar quando atingir data anterior ao período
       if (d < dataIni) { parou = true; break; }
       if (d > dataFim) continue;
-      if (item.cancelada || item.notaFiscal.status === "CANCELADA" || item.notaFiscal.status === "DENEGADA") continue;
+      if (item.cancelada || item.notaFiscal.status !== "AUTORIZADA") continue;
       soma += item.notaFiscal.valorTotal ?? 0;
       qtd++;
     }
