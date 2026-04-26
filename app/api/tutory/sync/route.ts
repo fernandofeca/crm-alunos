@@ -335,6 +335,7 @@ type RegistroCadastro = {
   email: string;
   concurso: string;
   planoVencimento: Date | null;
+  dataInicio: Date | null;
 };
 
 async function fetchRelacaoCadastros(cookie: string): Promise<{ registros: RegistroCadastro[]; debug: string }> {
@@ -377,10 +378,11 @@ async function fetchRelacaoCadastros(cookie: string): Promise<{ registros: Regis
     const rows  = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
     if (rows.length === 0) return { registros: [], debug: "XLS sem linhas" };
 
-    const headers  = Object.keys(rows[0]);
-    const colEmail = encontrarChave(headers, ["email", "e-mail", "e mail"]);
-    const colConc  = encontrarChave(headers, ["concurso", "plano", "curso", "produto", "plan", "nome do plano"]);
-    const colVenc  = encontrarChave(headers, ["vencimento", "expira", "validade", "dt_expiracao", "data de vencimento", "data vencimento"]);
+    const headers   = Object.keys(rows[0]);
+    const colEmail  = encontrarChave(headers, ["email", "e-mail", "e mail"]);
+    const colConc   = encontrarChave(headers, ["concurso", "plano", "curso", "produto", "plan", "nome do plano"]);
+    const colVenc   = encontrarChave(headers, ["vencimento", "expira", "validade", "dt_expiracao", "data de vencimento", "data vencimento"]);
+    const colInicio = encontrarChave(headers, ["data de inicio", "data inicio", "inicio", "dt_inicio", "dt_ini", "data de início", "data início", "início"]);
 
     // Agrupa por email mantendo a entrada com vencimento mais recente (plano atual)
     const byEmail = new Map<string, RegistroCadastro>();
@@ -403,17 +405,29 @@ async function fetchRelacaoCadastros(cookie: string): Promise<{ registros: Regis
         if (!isNaN(d.getTime())) planoVencimento = d;
       }
 
+      // Data de início
+      const inicioRaw = row[colInicio];
+      let dataInicio: Date | null = null;
+      if (inicioRaw instanceof Date) dataInicio = inicioRaw;
+      else if (typeof inicioRaw === "string" && inicioRaw) {
+        const d = new Date(inicioRaw);
+        if (!isNaN(d.getTime())) dataInicio = d;
+      } else if (typeof inicioRaw === "number" && inicioRaw > 0) {
+        const d = new Date(Math.round((inicioRaw - 25569) * 86400 * 1000));
+        if (!isNaN(d.getTime())) dataInicio = d;
+      }
+
       const existente = byEmail.get(email);
       const maisRecente =
         !existente ||
         (planoVencimento && (!existente.planoVencimento || planoVencimento > existente.planoVencimento));
-      if (maisRecente) byEmail.set(email, { email, concurso, planoVencimento });
+      if (maisRecente) byEmail.set(email, { email, concurso, planoVencimento, dataInicio });
     }
 
     const registros = [...byEmail.values()];
     return {
       registros,
-      debug: `OK — ${registros.length} alunos únicos de ${rows.length} linhas (colunas: email=${colEmail}, concurso=${colConc}, venc=${colVenc})`,
+      debug: `OK — ${registros.length} alunos únicos de ${rows.length} linhas (colunas: email=${colEmail}, concurso=${colConc}, venc=${colVenc}, inicio=${colInicio})`,
     };
   } catch (e) {
     return { registros: [], debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
@@ -504,8 +518,8 @@ async function executarSync(incluirVinculacao: boolean, vinculacaoOffset: number
         const nome = t.nome?.trim() || "Sem nome";
         const concurso = t.plano_nome ?? "";
         const planoVencimento = t.dt_expiracao ? new Date(t.dt_expiracao) : null;
-        const dtCadastroRaw = (t.dt_ini ?? t.dt_cadastro ?? null) as string | null;
-        const tutoryCreatedAt = dtCadastroRaw ? new Date(dtCadastroRaw) : null;
+        const dataInicio      = t.dt_ini      ? new Date(t.dt_ini as string)      : null;
+        const tutoryCreatedAt = t.dt_cadastro ? new Date(t.dt_cadastro as string) : dataInicio;
 
         let existente = email ? await prisma.aluno.findUnique({ where: { email } }) : null;
         if (!existente && cpf.length === 11 && !cpf.startsWith("000")) {
@@ -522,12 +536,12 @@ async function executarSync(incluirVinculacao: boolean, vinculacaoOffset: number
         if (existente) {
           await prisma.aluno.update({
             where: { id: existente.id },
-            data: { nome: nome || existente.nome, whatsapp: whatsapp || existente.whatsapp, concurso: concurso || existente.concurso, planoVencimento, ativo, tutoryId: t.id, ...(cpf && !existente.cpf ? { cpf } : {}), ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}) },
+            data: { nome: nome || existente.nome, whatsapp: whatsapp || existente.whatsapp, concurso: concurso || existente.concurso, planoVencimento, ativo, tutoryId: t.id, ...(cpf && !existente.cpf ? { cpf } : {}), ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}), ...(dataInicio ? { dataInicio } : {}) },
           });
           resultados.atualizados++;
         } else if (ativo) {
           await prisma.aluno.create({
-            data: { nome, email: email || `sem-email-tutory-${t.id}`, cpf, whatsapp, concurso, planoVencimento, ativo: true, tutoryId: t.id, ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}) },
+            data: { nome, email: email || `sem-email-tutory-${t.id}`, cpf, whatsapp, concurso, planoVencimento, ativo: true, tutoryId: t.id, ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}), ...(dataInicio ? { dataInicio } : {}) },
           });
           resultados.criados++;
         }
@@ -563,17 +577,18 @@ async function executarSync(incluirVinculacao: boolean, vinculacaoOffset: number
       }
     }
 
-    // 4. Atualiza concurso + planoVencimento via Relação de Cadastros
+    // 4. Atualiza concurso + planoVencimento + dataInicio via Relação de Cadastros
     //    Cobre TODOS os alunos (ativos e históricos) pelo email.
     //    Mantém o plano mais recente por aluno (já resolvido no fetchRelacaoCadastros).
     let concursosAtualizados = 0;
     for (const c of cadastros) {
-      if (!c.concurso) continue;
+      if (!c.concurso && !c.dataInicio && !c.planoVencimento) continue;
       const r = await prisma.aluno.updateMany({
         where: { email: c.email },
         data: {
-          concurso: c.concurso,
-          ...(c.planoVencimento !== null ? { planoVencimento: c.planoVencimento } : {}),
+          ...(c.concurso       ? { concurso: c.concurso }             : {}),
+          ...(c.planoVencimento ? { planoVencimento: c.planoVencimento } : {}),
+          ...(c.dataInicio      ? { dataInicio: c.dataInicio }          : {}),
         },
       });
       concursosAtualizados += r.count;
