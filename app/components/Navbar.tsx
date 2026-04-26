@@ -22,14 +22,17 @@ export default function Navbar() {
           <Link href="/alunos-engajados" className="text-slate-600 hover:text-blue-600 transition">
             Alunos Engajados
           </Link>
+          <Link href="/historico-atrasos" className="text-slate-600 hover:text-blue-600 transition">
+            Histórico de Atrasos
+          </Link>
           <Link href="/aniversariantes" className="text-slate-600 hover:text-blue-600 transition">
             Aniversariantes
           </Link>
           <Link href="/alunos-a-vencer" className="text-slate-600 hover:text-blue-600 transition">
             Alunos a Vencer
           </Link>
-          <Link href="/historico-atrasos" className="text-slate-600 hover:text-blue-600 transition">
-            Histórico de Atrasos
+          <Link href="/renovacao-pendente" className="text-slate-600 hover:text-blue-600 transition">
+            Renovação Pendente
           </Link>
           <Link href="/agenda" className="text-slate-600 hover:text-blue-600 transition">
             Agenda
