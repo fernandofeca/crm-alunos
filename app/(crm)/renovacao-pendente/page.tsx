@@ -93,7 +93,7 @@ async function fetchRenovacaoPendente(
     const colEmail  = encontrarChave(headers, ["email", "e-mail", "e mail"]);
     const colTel    = encontrarChave(headers, ["telefone", "celular", "whatsapp", "fone", "tel"]);
     const colConc   = encontrarChave(headers, ["concurso", "plano", "curso", "produto", "plan"]);
-    const colVenc   = encontrarChave(headers, ["vencimento", "expira", "validade", "data de vencimento", "data vencimento"]);
+    const colVenc   = encontrarChave(headers, ["data fim", "vencimento", "expira", "validade", "data de vencimento", "data vencimento", "termino", "término", "fim"]);
 
     const alunos: RenovacaoPendente[] = [];
     for (const row of rows) {
@@ -129,7 +129,7 @@ async function fetchRenovacaoPendente(
 
     return {
       alunos,
-      debug: `OK — ${alunos.length} alunos (colunas: nome=${colNome}, email=${colEmail}, conc=${colConc}, venc=${colVenc || "NÃO ENCONTRADO"} | todos: ${headers.join(", ")})`,
+      debug: `OK — ${alunos.length} alunos (colunas: nome=${colNome}, email=${colEmail}, conc=${colConc}, venc=${colVenc})`,
     };
   } catch (e) {
     return { alunos: [], debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };

@@ -381,7 +381,7 @@ async function fetchRelacaoCadastros(cookie: string): Promise<{ registros: Regis
     const headers   = Object.keys(rows[0]);
     const colEmail  = encontrarChave(headers, ["email", "e-mail", "e mail"]);
     const colConc   = encontrarChave(headers, ["concurso", "plano", "curso", "produto", "plan", "nome do plano"]);
-    const colVenc   = encontrarChave(headers, ["vencimento", "expira", "validade", "dt_expiracao", "data de vencimento", "data vencimento"]);
+    const colVenc   = encontrarChave(headers, ["data fim", "vencimento", "expira", "validade", "dt_expiracao", "data de vencimento", "data vencimento", "termino", "término", "fim"]);
     const colInicio = encontrarChave(headers, ["data de inicio", "data inicio", "inicio", "dt_inicio", "dt_ini", "data de início", "data início", "início"]);
 
     // Agrupa por email mantendo a entrada com vencimento mais recente (plano atual)
