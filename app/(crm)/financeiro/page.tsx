@@ -49,13 +49,11 @@ function BarChart({ historico }: { historico: HistoricoItem[] }) {
 
   return (
     <div className="mt-6">
-      <h2 className="text-sm font-semibold text-slate-600 mb-4">Faturamento — últimos 12 meses</h2>
+      <h2 className="text-sm font-semibold text-slate-600 mb-4">Faturamento Total — últimos 12 meses</h2>
       <div className="flex items-end gap-2 h-40">
         {historico.map((h, i) => {
           const total = h.produto + h.servico;
           const pct = (total / max) * 100;
-          const pctProd = total > 0 ? (h.produto / total) * pct : 0;
-          const pctServ = total > 0 ? (h.servico / total) * pct : 0;
           const isAtual = i === historico.length - 1;
 
           return (
@@ -71,21 +69,14 @@ function BarChart({ historico }: { historico: HistoricoItem[] }) {
                 <div className="w-2 h-2 bg-slate-800 rotate-45 -mt-1" />
               </div>
 
-              {/* barra empilhada */}
+              {/* barra única */}
               <div className="w-full flex flex-col justify-end rounded-t-md overflow-hidden" style={{ height: "120px" }}>
-                {pctServ > 0 && (
+                {total > 0 ? (
                   <div
-                    className="w-full bg-indigo-400"
-                    style={{ height: `${pctServ}%` }}
+                    className={`w-full ${isAtual ? "bg-emerald-500" : "bg-emerald-300"}`}
+                    style={{ height: `${pct}%` }}
                   />
-                )}
-                {pctProd > 0 && (
-                  <div
-                    className={`w-full ${isAtual ? "bg-blue-600" : "bg-blue-300"}`}
-                    style={{ height: `${pctProd}%` }}
-                  />
-                )}
-                {total === 0 && (
+                ) : (
                   <div className="w-full bg-slate-100" style={{ height: "4px" }} />
                 )}
               </div>
@@ -96,16 +87,6 @@ function BarChart({ historico }: { historico: HistoricoItem[] }) {
             </div>
           );
         })}
-      </div>
-      <div className="flex items-center gap-4 mt-3">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-blue-400" />
-          <span className="text-xs text-slate-500">NF Produto</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-indigo-400" />
-          <span className="text-xs text-slate-500">NF Serviço</span>
-        </div>
       </div>
     </div>
   );

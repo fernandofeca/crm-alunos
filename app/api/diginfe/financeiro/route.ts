@@ -167,7 +167,11 @@ export async function GET(req: NextRequest) {
   const month = parseInt(url.searchParams.get("month") ?? String(now.getMonth())); // 0-based
 
   const dataIni = new Date(Date.UTC(year, month, 1));
-  const dataFim = new Date(Date.UTC(year, month + 1, 0));
+  // Mês atual: usa hoje como fim para bater com relatórios do Diginfe
+  const isCurrentMonth = year === now.getUTCFullYear() && month === now.getUTCMonth();
+  const dataFim = isCurrentMonth
+    ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    : new Date(Date.UTC(year, month + 1, 0));
 
   try {
     const token = await getToken();
