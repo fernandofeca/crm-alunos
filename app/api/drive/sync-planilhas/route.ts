@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { registrarLog } from "@/lib/log";
 
 const FOLDER_ID = "1qdM6wxLIqMadq6NphCUG92rVBZiKnTlb";
 
@@ -194,6 +195,12 @@ async function executarSync(dry: boolean) {
   let salvos = 0;
   if (!dry) {
     salvos = await salvarPlanilhas(matches);
+    await registrarLog({
+      tipo: "sistema",
+      acao: "drive_sync",
+      descricao: `Sincronizou planilhas do Drive: ${salvos} vínculos salvos (${exatos.length} exatos + ${fuzzy.length} fuzzy)`,
+      meta: { exatos: exatos.length, fuzzy: fuzzy.length, semMatch: semMatch.length, salvos },
+    });
   }
 
   return NextResponse.json({

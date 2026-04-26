@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { registrarLog } from "@/lib/log";
 
 const PAGE_SIZE = 50;
 
@@ -149,6 +150,15 @@ export async function POST(req: NextRequest) {
         : undefined,
     },
     include: { disciplinas: { include: { assuntos: true } } },
+  });
+
+  await registrarLog({
+    tipo: "usuario",
+    acao: "aluno_criado",
+    descricao: `Criou o aluno ${aluno.nome}`,
+    userId: (session.user?.id ?? null) as string | null,
+    alunoId: aluno.id,
+    alunoNome: aluno.nome,
   });
 
   return NextResponse.json(aluno, { status: 201 });

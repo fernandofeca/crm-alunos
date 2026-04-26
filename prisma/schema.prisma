@@ -17,6 +17,7 @@ model User {
   tarefas               Tarefa[]  @relation("TarefaCriador")
   tarefasAtribuidas     Tarefa[]  @relation("TarefaResponsavel")
   tarefasAtribuidas2    Tarefa[]  @relation("TarefaResponsavel2")
+  logs                  Log[]
   eventos               Evento[]
   googleRefreshToken    String?
   createdAt             DateTime  @default(now())
@@ -135,6 +136,22 @@ model SnapshotAtraso {
   criadoEm   DateTime @default(now())
 
   @@unique([semana, email])
+}
+
+model Log {
+  id        String   @id @default(cuid())
+  tipo      String   // "usuario" | "sistema"
+  acao      String   // "aluno_criado", "contato_registrado", etc.
+  descricao String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  alunoId   String?
+  alunoNome String?
+  meta      Json     @default("{}")
+  criadoEm  DateTime @default(now())
+
+  @@index([criadoEm(sort: Desc)])
+  @@index([userId])
 }
 
 model Conquista {

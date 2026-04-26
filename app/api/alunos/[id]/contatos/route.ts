@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { registrarLog } from "@/lib/log";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -22,9 +23,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     include: { user: true },
   });
 
-  await prisma.aluno.update({
+  const aluno = await prisma.aluno.update({
     where: { id },
     data: { ultimoContatoData: contatoData },
+    select: { nome: true },
+  });
+
+  await registrarLog({
+    tipo: "usuario",
+    acao: "contato_registrado",
+    descricao: `Registrou contato (${body.tipo}) com ${aluno.nome}`,
+    userId: (session.user?.id ?? null) as string | null,
+    alunoId: id,
+    alunoNome: aluno.nome,
+    meta: { tipo: body.tipo, obs: body.obs ?? "" },
   });
 
   return NextResponse.json(contato, { status: 201 });

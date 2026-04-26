@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { registrarLog } from "@/lib/log";
 
 type TutoryAluno = {
   id: number;
@@ -333,6 +334,13 @@ async function executarSync() {
         questoesAtualizados += r.count;
       }
     }
+
+    await registrarLog({
+      tipo: "sistema",
+      acao: "tutory_sync",
+      descricao: `Sincronizou Tutory: ${resultados.criados} criados, ${resultados.atualizados} atualizados`,
+      meta: { criados: resultados.criados, atualizados: resultados.atualizados, total: tutoryAlunos.length },
+    });
 
     return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, paginacaoDebug });
   } catch (e) {

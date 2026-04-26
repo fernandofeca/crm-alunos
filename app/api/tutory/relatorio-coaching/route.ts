@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { registrarLog } from "@/lib/log";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -219,6 +220,13 @@ async function executarRelatorios() {
   const envios = await enviarEmails(adminCookie, bearerToken, relTokens, dtIni, dtFim);
   const enviados = envios.filter((e) => e.ok).length;
   const falhas = envios.filter((e) => !e.ok);
+
+  await registrarLog({
+    tipo: "sistema",
+    acao: "coaching_relatorio",
+    descricao: `Gerou relatórios de coaching: ${enviados} emails enviados para ${ids.length} alunos (${dtIni} → ${dtFim})`,
+    meta: { totalAlunos: ids.length, emailsEnviados: enviados, dtIni, dtFim },
+  });
 
   return NextResponse.json({
     ok: true,

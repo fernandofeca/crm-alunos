@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { registrarLog } from "@/lib/log";
 
 const include = {
   aluno: { select: { id: true, nome: true } },
@@ -54,6 +55,16 @@ export async function POST(req: NextRequest) {
       userId: (session.user?.id ?? "") as string,
     },
     include,
+  });
+
+  await registrarLog({
+    tipo: "usuario",
+    acao: "tarefa_criada",
+    descricao: `Criou a tarefa "${tarefa.titulo}"`,
+    userId: (session.user?.id ?? null) as string | null,
+    alunoId: tarefa.alunoId,
+    alunoNome: tarefa.aluno?.nome,
+    meta: { prioridade: tarefa.prioridade },
   });
 
   return NextResponse.json(tarefa, { status: 201 });

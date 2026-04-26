@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { registrarLog } from "@/lib/log";
 
 export async function GET() {
   const session = await auth();
@@ -34,6 +35,14 @@ export async function POST(req: NextRequest) {
   const usuario = await prisma.user.create({
     data: { name, email, password: hash, role: role ?? "equipe" },
     select: { id: true, name: true, email: true, role: true, createdAt: true },
+  });
+
+  await registrarLog({
+    tipo: "usuario",
+    acao: "usuario_criado",
+    descricao: `Criou o usuário ${name} (${role ?? "equipe"})`,
+    userId: (session.user?.id ?? null) as string | null,
+    meta: { novoUsuarioId: usuario.id, email },
   });
 
   return NextResponse.json(usuario, { status: 201 });

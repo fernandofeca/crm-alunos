@@ -40,6 +40,9 @@ export default function Navbar() {
           <Link href="/usuarios" className="text-slate-600 hover:text-blue-600 transition">
             Usuários
           </Link>
+          <Link href="/logs" className="text-slate-600 hover:text-blue-600 transition">
+            Logs
+          </Link>
         </div>
       </div>
       <div className="flex items-center gap-4">

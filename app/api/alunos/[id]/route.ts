@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { registrarLog } from "@/lib/log";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -41,6 +42,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     },
   });
 
+  await registrarLog({
+    tipo: "usuario",
+    acao: "aluno_atualizado",
+    descricao: `Atualizou dados do aluno ${aluno.nome}`,
+    userId: (session.user?.id ?? null) as string | null,
+    alunoId: aluno.id,
+    alunoNome: aluno.nome,
+  });
+
   return NextResponse.json(aluno);
 }
 
@@ -71,7 +81,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.tutoryId !== undefined) campos.tutoryId = body.tutoryId ? Number(body.tutoryId) : null;
   if (body.planilhaUrl !== undefined) campos.planilhaUrl = body.planilhaUrl || null;
 
+  // Busca nome atual para log (antes do update, caso seja exclusão de dado)
+  const alunoAtual = await prisma.aluno.findUnique({ where: { id }, select: { nome: true } });
+
   const aluno = await prisma.aluno.update({ where: { id }, data: campos });
+
+  // Só loga se vier de sessão humana (não de sync automático)
+  if (session.user?.id) {
+    const camposEditados = Object.keys(campos).join(", ");
+    await registrarLog({
+      tipo: "usuario",
+      acao: "aluno_editado",
+      descricao: `Editou perfil de ${alunoAtual?.nome ?? id} (${camposEditados})`,
+      userId: session.user.id as string,
+      alunoId: id,
+      alunoNome: alunoAtual?.nome,
+      meta: { campos: Object.keys(campos) },
+    });
+  }
+
   return NextResponse.json(aluno);
 }
 
@@ -80,6 +108,17 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
   const { id } = await params;
+  const aluno = await prisma.aluno.findUnique({ where: { id }, select: { nome: true } });
   await prisma.aluno.delete({ where: { id } });
+
+  await registrarLog({
+    tipo: "usuario",
+    acao: "aluno_excluido",
+    descricao: `Excluiu o aluno ${aluno?.nome ?? id}`,
+    userId: (session.user?.id ?? null) as string | null,
+    alunoNome: aluno?.nome,
+    meta: { alunoId: id },
+  });
+
   return NextResponse.json({ ok: true });
 }
