@@ -1,10 +1,3 @@
-/**
- * GET /api/tutory/debug-relatorios?key=cg-bulk-2026
- *
- * Inspeciona a página de relatórios + JS principal da Tutory para
- * descobrir quais endpoints são usados no relatório de alunos por curso.
- */
-
 import { NextRequest, NextResponse } from "next/server";
 
 async function getSessionCookie(): Promise<string> {
@@ -19,22 +12,6 @@ async function getSessionCookie(): Promise<string> {
   return res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
 }
 
-function extrairTrechos(texto: string, palavras: string[], contexto = 300): string[] {
-  const trechos: string[] = [];
-  const lower = texto.toLowerCase();
-  for (const p of palavras) {
-    let pos = 0;
-    while (true) {
-      const idx = lower.indexOf(p.toLowerCase(), pos);
-      if (idx === -1) break;
-      trechos.push(`[${p}@${idx}] ...${texto.slice(Math.max(0, idx - 100), idx + contexto)}...`);
-      pos = idx + 1;
-      if (trechos.length > 30) break;
-    }
-  }
-  return trechos;
-}
-
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
@@ -42,56 +19,61 @@ export async function GET(req: NextRequest) {
   const cookie = await getSessionCookie();
   if (!cookie) return NextResponse.json({ error: "Login falhou" }, { status: 500 });
 
-  // 1. HTML da página de relatórios
-  const html = await fetch("https://admin.tutory.com.br/cursos/relatorios", {
+  // 1. Página principal — extrai todos os cursos do select
+  const htmlPrincipal = await fetch("https://admin.tutory.com.br/cursos/relatorios", {
     headers: { Cookie: cookie },
   }).then((r) => r.text());
 
-  if (html.includes('document.location.href = "/login"')) {
-    return NextResponse.json({ error: "Cookie expirado" }, { status: 401 });
-  }
-
-  // 2. Busca o arquivo JS principal referenciado na página
-  const jsUrls = [...html.matchAll(/src=["']((?:https?:)?\/\/[^"']*\.js[^"']*)["']/gi)].map((m) => m[1]);
-  const jsPrincipal = jsUrls.find((u) => u.includes("tutory-admin-main") || u.includes("main")) ?? jsUrls[0] ?? "";
-
-  let jsTrechos: string[] = [];
-  let jsIntentEndpoints: string[] = [];
-  if (jsPrincipal) {
-    const url = jsPrincipal.startsWith("//") ? `https:${jsPrincipal}` : jsPrincipal;
-    try {
-      const js = await fetch(url).then((r) => r.text());
-      // Todos os /intent/ encontrados no JS
-      jsIntentEndpoints = [...new Set([...js.matchAll(/["'`](\/intent\/[^"'`\s?#]+)/g)].map((m) => m[1]))];
-      // Trechos ao redor de palavras-chave de relatório
-      jsTrechos = extrairTrechos(js, ["relatorio", "relat", "listar-aluno", "cursos", "planilha", "export", "download", "xls"]);
-    } catch {
-      jsTrechos = ["Erro ao buscar JS"];
+  const cursos: { id: string; nome: string }[] = [];
+  const selectMatch = htmlPrincipal.match(/<select[^>]*select-concurso[^>]*>([\s\S]*?)<\/select>/i);
+  if (selectMatch) {
+    for (const m of selectMatch[1].matchAll(/<option[^>]*value=["'](\d+)["'][^>]*>\s*([^<]+)/gi)) {
+      if (m[1] !== "0") cursos.push({ id: m[1], nome: m[2].trim() });
     }
   }
 
-  // 3. Trechos relevantes no HTML
-  const htmlTrechos = extrairTrechos(
-    html.replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<script[\s\S]*?<\/script>/gi, ""),
-    ["curso", "plano", "relat", "data-id", "data-curso", "aluno"]
-  );
+  // 2. Busca a página do PRIMEIRO curso para inspecionar estrutura
+  const primeiroCurso = cursos[0];
+  if (!primeiroCurso) return NextResponse.json({ cursos, erro: "Nenhum curso encontrado no select" });
 
-  // 4. Todos os /intent/ no HTML
-  const htmlIntentEndpoints = [...new Set([...html.matchAll(/["'`](\/intent\/[^"'`\s?#]+)/g)].map((m) => m[1]))];
+  const htmlCurso = await fetch(
+    `https://admin.tutory.com.br/cursos/relatorios?concurso=${primeiroCurso.id}`,
+    { headers: { Cookie: cookie } }
+  ).then((r) => r.text());
 
-  // 5. Blocos de script inline (sem libs externas)
-  const scriptsInline = [...html.matchAll(/<script(?!\s+src)[^>]*>([\s\S]*?)<\/script>/gi)]
+  // 3. Inspeciona a página do curso
+  const links    = [...htmlCurso.matchAll(/href=["']([^"']+)["']/gi)].map((m) => m[1]).filter((u) => u.startsWith("/") && u !== "#!");
+  const dataAttrs = [...htmlCurso.matchAll(/data-[\w-]+=["']([^"']+)["']/gi)].map((m) => m[0]);
+  const intentUrls = [...new Set([...htmlCurso.matchAll(/["'`](\/intent\/[^"'`\s?#]+)/g)].map((m) => m[1]))];
+  const scriptsInline = [...htmlCurso.matchAll(/<script(?!\s+src)[^>]*>([\s\S]*?)<\/script>/gi)]
     .map((m) => m[1].trim())
-    .filter((s) => s.length > 20 && (s.includes("relat") || s.includes("curso") || s.includes("intent") || s.includes("fetch") || s.includes("ajax")));
+    .filter((s) => s.length > 10);
+
+  // Linhas da tabela de alunos (se existir)
+  const tabelaMatch = htmlCurso.match(/<table[\s\S]*?<\/table>/gi) ?? [];
+  const tabelas = tabelaMatch.map((t) => t.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 500));
+
+  // Trecho ao redor de "aluno" e "relat"
+  const palavras = ["aluno", "relat", "download", "export", "xls", "intent", "fetch", "ajax", "email", "data-id"];
+  const trechos: string[] = [];
+  const lower = htmlCurso.toLowerCase();
+  for (const p of palavras) {
+    const idx = lower.indexOf(p);
+    if (idx >= 0) {
+      trechos.push(`[${p}@${idx}] ${htmlCurso.slice(Math.max(0, idx - 80), idx + 300).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ")}`);
+    }
+  }
 
   return NextResponse.json({
-    htmlLength: html.length,
-    jsUrlsEncontradas: jsUrls,
-    jsPrincipal,
-    jsIntentEndpoints,
-    htmlIntentEndpoints,
-    htmlTrechos: htmlTrechos.slice(0, 15),
-    jsTrechos: jsTrechos.slice(0, 15),
+    totalCursos: cursos.length,
+    cursos: cursos.slice(0, 10), // primeiros 10
+    primeiroCursoInspecionado: primeiroCurso,
+    htmlCursoLength: htmlCurso.length,
+    links: [...new Set(links)].slice(0, 30),
+    dataAttrs: dataAttrs.slice(0, 20),
+    intentUrls,
     scriptsInline: scriptsInline.slice(0, 5),
+    tabelas: tabelas.slice(0, 3),
+    trechos: trechos.slice(0, 15),
   });
 }
