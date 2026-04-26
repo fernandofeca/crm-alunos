@@ -29,12 +29,6 @@ export default async function AlunosPage() {
         <div className="flex gap-2">
           <TutorySyncButton />
           <Link
-            href="/alunos/importar"
-            className="border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm font-semibold px-4 py-2 rounded-lg transition"
-          >
-            Importar XLS
-          </Link>
-          <Link
             href="/alunos/novo"
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
           >
