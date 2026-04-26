@@ -43,6 +43,9 @@ export default function Navbar() {
           <Link href="/usuarios" className="text-slate-600 hover:text-blue-600 transition">
             Usuários
           </Link>
+          <Link href="/financeiro" className="text-slate-600 hover:text-blue-600 transition">
+            Financeiro
+          </Link>
           <Link href="/logs" className="text-slate-600 hover:text-blue-600 transition">
             Logs
           </Link>

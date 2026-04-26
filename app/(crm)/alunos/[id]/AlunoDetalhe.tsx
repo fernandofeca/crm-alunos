@@ -167,17 +167,20 @@ function statusBadge(nota: NotaFiscal) {
   return "bg-slate-100 text-slate-500";
 }
 
-function NotasFiscaisSection({ cpf }: { cpf: string }) {
+function NotasFiscaisSection({ cpf }: { cpf: string | null }) {
   const [notas, setNotas] = useState<NotaFiscal[] | null>(null);
   const [erro, setErro] = useState("");
   const [aberta, setAberta] = useState(false);
   const carregou = useRef(false);
 
+  const cpfLimpo = cpf?.replace(/\D/g, "") ?? "";
+
   function abrir() {
     setAberta(true);
+    if (!cpfLimpo || cpfLimpo.length < 11) return;
     if (carregou.current) return;
     carregou.current = true;
-    fetch(`/api/diginfe/notas/${encodeURIComponent(cpf.replace(/\D/g, ""))}`)
+    fetch(`/api/diginfe/notas/${encodeURIComponent(cpfLimpo)}`)
       .then((r) => r.json())
       .then((data: { notas?: NotaFiscal[]; error?: string }) => {
         if (data.error) setErro(data.error);
@@ -211,50 +214,59 @@ function NotasFiscaisSection({ cpf }: { cpf: string }) {
 
       {aberta && (
         <div className="px-6 pb-5 border-t border-slate-100">
-          {!notas && !erro && (
-            <p className="text-sm text-slate-400 py-4 animate-pulse">Buscando notas fiscais…</p>
-          )}
-          {erro && (
-            <p className="text-sm text-red-600 py-4">⚠️ {erro}</p>
-          )}
-          {notas !== null && notas.length === 0 && (
+          {/* sem CPF */}
+          {!cpfLimpo || cpfLimpo.length < 11 ? (
             <p className="text-sm text-slate-400 py-4">
-              Nenhuma NF-e / NFS-e encontrada para CPF {cpf}.
+              CPF não cadastrado — edite os dados do aluno para buscar notas fiscais.
             </p>
-          )}
-          {notas !== null && notas.length > 0 && (
-            <div className="mt-4 divide-y divide-slate-100">
-              {notas.map((nota) => (
-                <div key={nota.id} className="py-3 flex items-center gap-4">
-                  <div className="shrink-0">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${nota.tipo === "NFS-e" ? "bg-indigo-100 text-indigo-700" : "bg-sky-100 text-sky-700"}`}>
-                      {nota.tipo}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-800">
-                      Nº {nota.numero}{nota.serie ? ` · Série ${nota.serie}` : ""}
-                    </p>
-                    {nota.descricao && (
-                      <p className="text-xs text-slate-500 truncate">{nota.descricao}</p>
-                    )}
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs text-slate-500">
-                      {new Date(nota.dataEmissao).toLocaleDateString("pt-BR")}
-                    </p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusBadge(nota)}`}>
-                      {nota.cancelada ? "Cancelada" : nota.status}
-                    </span>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-sm font-semibold text-slate-700">
-                      {nota.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    </p>
-                  </div>
+          ) : (
+            <>
+              {!notas && !erro && (
+                <p className="text-sm text-slate-400 py-4 animate-pulse">Buscando notas fiscais…</p>
+              )}
+              {erro && (
+                <p className="text-sm text-red-600 py-4">⚠️ {erro}</p>
+              )}
+              {notas !== null && notas.length === 0 && (
+                <p className="text-sm text-slate-400 py-4">
+                  Nenhuma NF-e / NFS-e encontrada para CPF {cpf}.
+                </p>
+              )}
+              {notas !== null && notas.length > 0 && (
+                <div className="mt-4 divide-y divide-slate-100">
+                  {notas.map((nota) => (
+                    <div key={nota.id} className="py-3 flex items-center gap-4">
+                      <div className="shrink-0">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${nota.tipo === "NFS-e" ? "bg-indigo-100 text-indigo-700" : "bg-sky-100 text-sky-700"}`}>
+                          {nota.tipo}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-800">
+                          Nº {nota.numero}{nota.serie ? ` · Série ${nota.serie}` : ""}
+                        </p>
+                        {nota.descricao && (
+                          <p className="text-xs text-slate-500 truncate">{nota.descricao}</p>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-xs text-slate-500">
+                          {new Date(nota.dataEmissao).toLocaleDateString("pt-BR")}
+                        </p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${statusBadge(nota)}`}>
+                          {nota.cancelada ? "Cancelada" : nota.status}
+                        </span>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-semibold text-slate-700">
+                          {nota.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
 
           <div className="mt-4">
@@ -808,7 +820,7 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
       </div>
 
       {/* NF-e / NFS-e */}
-      {aluno.cpf && <NotasFiscaisSection cpf={aluno.cpf} />}
+      <NotasFiscaisSection cpf={aluno.cpf} />
 
       {/* Disciplinas e Assuntos */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
