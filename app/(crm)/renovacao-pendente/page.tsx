@@ -129,7 +129,7 @@ async function fetchRenovacaoPendente(
 
     return {
       alunos,
-      debug: `OK — ${alunos.length} alunos (colunas: nome=${colNome}, email=${colEmail}, conc=${colConc}, venc=${colVenc})`,
+      debug: `OK — ${alunos.length} alunos (colunas: nome=${colNome}, email=${colEmail}, conc=${colConc}, venc=${colVenc || "NÃO ENCONTRADO"} | todos: ${headers.join(", ")})`,
     };
   } catch (e) {
     return { alunos: [], debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
