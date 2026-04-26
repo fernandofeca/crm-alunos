@@ -329,6 +329,97 @@ async function vincularPorRelatorios(cookie: string, offset: number, budgetMs: n
   return { vinculados, cursosComDados, cursosSemDados, totalCursosDisponiveis: allIds.length, proximoOffset, timedOut };
 }
 
+// ─── Relação de Cadastros (/loja/relatorios) ──────────────────────────────────
+
+type RegistroCadastro = {
+  email: string;
+  concurso: string;
+  planoVencimento: Date | null;
+};
+
+async function fetchRelacaoCadastros(cookie: string): Promise<{ registros: RegistroCadastro[]; debug: string }> {
+  try {
+    // 1. Descobre o link de download na página /loja/relatorios
+    const html = await fetch("https://admin.tutory.com.br/loja/relatorios", {
+      headers: { Cookie: cookie },
+      signal: AbortSignal.timeout(10_000),
+    }).then((r) => r.text());
+
+    let downloadPath = "";
+    // Quebra em blocos de relatorio-item e procura o que contém "cadastro"
+    const blocos = html.split(/(?=<div[^>]*class="[^"]*relatorio-item)/i);
+    for (const bloco of blocos) {
+      if (/relac[aã]o\s+de\s+cadastros?/i.test(bloco)) {
+        const m = bloco.match(/href=["']([^"']+)["']/i);
+        if (m) { downloadPath = m[1]; break; }
+      }
+    }
+    if (!downloadPath) return { registros: [], debug: "Link de cadastros não encontrado na página" };
+
+    // 2. Baixa o XLS
+    const url = downloadPath.startsWith("http")
+      ? downloadPath
+      : `https://admin.tutory.com.br${downloadPath}`;
+
+    const res = await fetch(url, {
+      headers: { Cookie: cookie },
+      signal: AbortSignal.timeout(30_000),
+    });
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct.includes("text/html")) return { registros: [], debug: `Resposta HTML em vez de XLS (url: ${url})` };
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.length < 50) return { registros: [], debug: "XLS vazio ou muito pequeno" };
+
+    // 3. Parseia o XLS
+    const wb   = XLSX.read(buffer, { type: "buffer", cellDates: true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows  = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+    if (rows.length === 0) return { registros: [], debug: "XLS sem linhas" };
+
+    const headers  = Object.keys(rows[0]);
+    const colEmail = encontrarChave(headers, ["email", "e-mail", "e mail"]);
+    const colConc  = encontrarChave(headers, ["concurso", "plano", "curso", "produto", "plan", "nome do plano"]);
+    const colVenc  = encontrarChave(headers, ["vencimento", "expira", "validade", "dt_expiracao", "data de vencimento", "data vencimento"]);
+
+    // Agrupa por email mantendo a entrada com vencimento mais recente (plano atual)
+    const byEmail = new Map<string, RegistroCadastro>();
+    for (const row of rows) {
+      const email = String(row[colEmail] ?? "").toLowerCase().trim();
+      if (!email || !email.includes("@")) continue;
+
+      const concurso = String(row[colConc] ?? "").trim();
+      const vencRaw  = row[colVenc];
+
+      let planoVencimento: Date | null = null;
+      if (vencRaw instanceof Date) {
+        planoVencimento = vencRaw;
+      } else if (typeof vencRaw === "string" && vencRaw) {
+        const d = new Date(vencRaw);
+        if (!isNaN(d.getTime())) planoVencimento = d;
+      } else if (typeof vencRaw === "number" && vencRaw > 0) {
+        // Serial date do Excel
+        const d = new Date(Math.round((vencRaw - 25569) * 86400 * 1000));
+        if (!isNaN(d.getTime())) planoVencimento = d;
+      }
+
+      const existente = byEmail.get(email);
+      const maisRecente =
+        !existente ||
+        (planoVencimento && (!existente.planoVencimento || planoVencimento > existente.planoVencimento));
+      if (maisRecente) byEmail.set(email, { email, concurso, planoVencimento });
+    }
+
+    const registros = [...byEmail.values()];
+    return {
+      registros,
+      debug: `OK — ${registros.length} alunos únicos de ${rows.length} linhas (colunas: email=${colEmail}, concurso=${colConc}, venc=${colVenc})`,
+    };
+  } catch (e) {
+    return { registros: [], debug: `Erro: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 // ─── handlers ─────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -389,10 +480,12 @@ async function executarSync(incluirVinculacao: boolean, vinculacaoOffset: number
       { alunos: tutoryAlunos, paginacaoDebug, primeiroAlunoKeys },
       { map: diasAtrasoMap, debug: diasAtrasoDebug, ok: diasAtrasoOk },
       { map: questoesMap, debug: questoesDebug },
+      { registros: cadastros, debug: cadastrosDebug },
     ] = await Promise.all([
       fetchTutoryAlunos(apiHeaders),
       fetchDiasAtraso(cookieHeader),
       cookieHeader ? fetchQuestoes(cookieHeader) : Promise.resolve({ map: new Map<string, QuestaoInfo>(), debug: "Sem cookie" }),
+      cookieHeader ? fetchRelacaoCadastros(cookieHeader) : Promise.resolve({ registros: [], debug: "Sem cookie" }),
     ]);
 
     if (tutoryAlunos.length === 0) {
@@ -470,7 +563,23 @@ async function executarSync(incluirVinculacao: boolean, vinculacaoOffset: number
       }
     }
 
-    // 4. Vinculação por relatórios de curso (se solicitada, com budget restante ~25s)
+    // 4. Atualiza concurso + planoVencimento via Relação de Cadastros
+    //    Cobre TODOS os alunos (ativos e históricos) pelo email.
+    //    Mantém o plano mais recente por aluno (já resolvido no fetchRelacaoCadastros).
+    let concursosAtualizados = 0;
+    for (const c of cadastros) {
+      if (!c.concurso) continue;
+      const r = await prisma.aluno.updateMany({
+        where: { email: c.email },
+        data: {
+          concurso: c.concurso,
+          ...(c.planoVencimento !== null ? { planoVencimento: c.planoVencimento } : {}),
+        },
+      });
+      concursosAtualizados += r.count;
+    }
+
+    // 5. Vinculação por relatórios de curso (se solicitada, com budget restante ~25s)
     let vincularResult: VincularResult | null = null;
     if (incluirVinculacao) {
       vincularResult = await vincularPorRelatorios(cookieHeader, vinculacaoOffset, 25_000);
@@ -479,8 +588,8 @@ async function executarSync(incluirVinculacao: boolean, vinculacaoOffset: number
     await registrarLog({
       tipo: "sistema",
       acao: "tutory_sync",
-      descricao: `Sincronizou Tutory: ${resultados.criados} criados, ${resultados.atualizados} atualizados${vincularResult ? `, ${vincularResult.vinculados} IDs vinculados` : ""}`,
-      meta: { criados: resultados.criados, atualizados: resultados.atualizados, total: tutoryAlunos.length, vinculados: vincularResult?.vinculados ?? 0 },
+      descricao: `Sincronizou Tutory: ${resultados.criados} criados, ${resultados.atualizados} atualizados, ${concursosAtualizados} concursos atualizados${vincularResult ? `, ${vincularResult.vinculados} IDs vinculados` : ""}`,
+      meta: { criados: resultados.criados, atualizados: resultados.atualizados, concursosAtualizados, total: tutoryAlunos.length, vinculados: vincularResult?.vinculados ?? 0 },
     });
 
     return NextResponse.json({
@@ -488,8 +597,10 @@ async function executarSync(incluirVinculacao: boolean, vinculacaoOffset: number
       ...resultados,
       salvos: resultados.atualizados,
       total: tutoryAlunos.length,
+      concursosAtualizados,
       diasAtrasoDebug,
       questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`,
+      cadastrosDebug,
       paginacaoDebug,
       // Campos de vinculação (presentes só quando incluirVinculacao=true)
       ...(vincularResult ?? {}),

@@ -66,6 +66,8 @@ function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
   if (typeof dados.totalAlunos === "number") resumo.push(`${dados.totalAlunos} alunos`);
   if (typeof dados.emailsEnviados === "number") resumo.push(`${dados.emailsEnviados} emails enviados`);
   if (typeof dados.replanejados === "number") resumo.push(`${dados.replanejados} replanejados`);
+  if (typeof dados.concursosAtualizados === "number" && dados.concursosAtualizados > 0)
+    resumo.push(`${dados.concursosAtualizados} concursos atualizados`);
   if (typeof dados.vinculados === "number" && dados.vinculados > 0)
     resumo.push(`${dados.vinculados} IDs vinculados`);
   if (typeof dados.cursosComDados === "number")
