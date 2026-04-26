@@ -222,13 +222,19 @@ export default function FinanceiroPage() {
       {!loading && dados && !erro && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <CardTotal
-              label="Total NF Produto"
-              valor={dados.totalProduto}
-              qtd={dados.qtdNfe}
-              cor="bg-sky-50 text-sky-800 border border-sky-200"
-              icone="📦"
-            />
+            <div className="flex flex-col gap-2">
+              <CardTotal
+                label="Total NF Produto"
+                valor={dados.totalProduto}
+                qtd={dados.qtdNfe}
+                cor="bg-sky-50 text-sky-800 border border-sky-200"
+                icone="📦"
+              />
+              <div className="rounded-xl px-4 py-3 bg-sky-100 border border-sky-200 text-sky-800 flex items-center justify-between">
+                <span className="text-xs font-semibold opacity-70">6,197% sobre produto</span>
+                <span className="text-sm font-bold">{moeda(dados.totalProduto * 0.06197)}</span>
+              </div>
+            </div>
             <CardTotal
               label="Total NF Serviço"
               valor={dados.totalServico}
