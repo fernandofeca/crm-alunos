@@ -12,19 +12,20 @@ interface Acao {
   cor: string;
   corHover: string;
   icone: string;
-  /** Se true, continua chamando o endpoint com ?offset= até timedOut=false */
+  /** Se true, encadeia chamadas com ?offset= até timedOut=false */
   autoContinue?: boolean;
 }
 
 const ACOES: Acao[] = [
   {
     label: "Sync Tutory",
-    descricao: "Atualiza diasAtraso e taxaAcertos de todos os alunos",
+    descricao: "Atualiza diasAtraso, taxaAcertos e vincula IDs faltantes via relatórios de curso",
     url: "/api/tutory/sync",
     method: "POST",
     cor: "bg-blue-600 text-white",
     corHover: "hover:bg-blue-700",
     icone: "🔄",
+    autoContinue: true,
   },
   {
     label: "Retirar Atrasos",
@@ -53,36 +54,26 @@ const ACOES: Acao[] = [
     corHover: "hover:bg-teal-700",
     icone: "📊",
   },
-  {
-    label: "Vincular IDs Faltantes",
-    descricao: "Itera pelos relatórios de todos os cursos e vincula alunos históricos sem ID",
-    url: "/api/tutory/vincular-ids",
-    method: "POST",
-    cor: "bg-violet-600 text-white",
-    corHover: "hover:bg-violet-700",
-    icone: "🔗",
-    autoContinue: true,
-  },
 ];
 
 function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
   const [aberto, setAberto] = useState(false);
 
   const resumo: string[] = [];
-  if (typeof dados.salvos === "number") resumo.push(`${dados.salvos} alunos salvos`);
-  if (typeof dados.replanejados === "number") resumo.push(`${dados.replanejados} replanejados`);
-  if (typeof dados.total === "number") resumo.push(`${dados.total} alunos`);
+  if (typeof dados.salvos === "number") resumo.push(`${dados.salvos} alunos atualizados`);
+  if (typeof dados.criados === "number" && dados.criados > 0) resumo.push(`${dados.criados} criados`);
+  if (typeof dados.total === "number") resumo.push(`${dados.total} ativos na Tutory`);
   if (typeof dados.totalAlunos === "number") resumo.push(`${dados.totalAlunos} alunos`);
   if (typeof dados.emailsEnviados === "number") resumo.push(`${dados.emailsEnviados} emails enviados`);
-  if (typeof dados.vinculados === "number") resumo.push(`${dados.vinculados} vinculados`);
-  if (typeof dados.cursosComDados === "number") resumo.push(`${dados.cursosComDados} cursos com dados`);
+  if (typeof dados.replanejados === "number") resumo.push(`${dados.replanejados} replanejados`);
+  if (typeof dados.vinculados === "number" && dados.vinculados > 0)
+    resumo.push(`${dados.vinculados} IDs vinculados`);
+  if (typeof dados.cursosComDados === "number")
+    resumo.push(`${dados.cursosComDados} cursos processados`);
   if (typeof dados.totalCursosDisponiveis === "number")
-    resumo.push(`de ${dados.totalCursosDisponiveis} cursos`);
-  if (typeof dados.semMatch === "number" && dados.semMatch > 0) resumo.push(`${dados.semMatch} sem match`);
+    resumo.push(`de ${dados.totalCursosDisponiveis}`);
   if (typeof dados.semUrl === "number" && dados.semUrl > 0)
     resumo.push(`⚠️ ${dados.semUrl} sem URL de painel`);
-  if (typeof dados.elapsed === "number") resumo.push(`${dados.elapsed}s`);
-  if (typeof dados.executadoEm === "string") resumo.push(dados.executadoEm as string);
   if (typeof dados.msg === "string") resumo.push(dados.msg as string);
 
   return (
@@ -115,62 +106,66 @@ export default function AcoesTutory() {
 
     try {
       if (acao.autoContinue) {
-        // Chama repetidamente com offset até processar todos os cursos
-        let offset = 0;
-        let totalVinculados = 0;
-        let totalCursosComDados = 0;
-        let totalCursosSemDados = 0;
-        let totalCursosDisponiveis = 0;
-        const detalhesAcumulados: unknown[] = [];
+        // Primeira chamada: sync completo (offset=0 ativa vinculação)
+        // Chamadas seguintes: apenas continua varredura de cursos (offset>0)
+        setProgresso((p) => ({ ...p, [acao.label]: "Sincronizando Tutory…" }));
+        const res0 = await fetch(`${acao.url}?offset=0`, { method: acao.method });
+        const json0 = await res0.json() as Record<string, unknown>;
 
-        while (true) {
-          const url = `${acao.url}?offset=${offset}`;
+        if (!res0.ok) {
+          setResultados((r) => ({ ...r, [acao.label]: json0 }));
+          setEstados((e) => ({ ...e, [acao.label]: "erro" }));
+          setProgresso((p) => { const c = { ...p }; delete c[acao.label]; return c; });
+          return;
+        }
+
+        // Acumula resultados ao longo das chamadas
+        let totalVinculados       = (json0.vinculados       as number) ?? 0;
+        let totalCursosComDados   = (json0.cursosComDados   as number) ?? 0;
+        let totalCursosSemDados   = (json0.cursosSemDados   as number) ?? 0;
+        let totalCursosDisponiveis = (json0.totalCursosDisponiveis as number) ?? 0;
+        const dadosSync = {
+          salvos:  (json0.salvos  as number) ?? (json0.atualizados as number) ?? 0,
+          criados: (json0.criados as number) ?? 0,
+          total:   (json0.total   as number) ?? 0,
+        };
+
+        let offset     = (json0.proximoOffset as number) ?? 0;
+        let timedOut   = (json0.timedOut as boolean) ?? false;
+
+        // Continua varrendo cursos enquanto houver timeout e ainda existirem cursos
+        while (timedOut && offset < totalCursosDisponiveis) {
           setProgresso((p) => ({
             ...p,
-            [acao.label]: offset === 0
-              ? "Iniciando…"
-              : `Processando cursos a partir de ${offset}…`,
+            [acao.label]: `Vinculando IDs… (curso ${offset} de ${totalCursosDisponiveis})`,
           }));
 
-          const res = await fetch(url, { method: acao.method });
+          const res = await fetch(`${acao.url}?offset=${offset}`, { method: acao.method });
           const json = await res.json() as Record<string, unknown>;
 
-          if (!res.ok) {
-            setResultados((r) => ({ ...r, [acao.label]: json }));
-            setEstados((e) => ({ ...e, [acao.label]: "erro" }));
-            setProgresso((p) => { const c = { ...p }; delete c[acao.label]; return c; });
-            return;
-          }
+          if (!res.ok) break;
 
-          totalVinculados      += (json.vinculados      as number) ?? 0;
-          totalCursosComDados  += (json.cursosComDados  as number) ?? 0;
-          totalCursosSemDados  += (json.cursosSemDados  as number) ?? 0;
+          totalVinculados       += (json.vinculados       as number) ?? 0;
+          totalCursosComDados   += (json.cursosComDados   as number) ?? 0;
+          totalCursosSemDados   += (json.cursosSemDados   as number) ?? 0;
           totalCursosDisponiveis = (json.totalCursosDisponiveis as number) ?? totalCursosDisponiveis;
-          if (Array.isArray(json.detalhes)) detalhesAcumulados.push(...json.detalhes);
-
-          const timedOut      = json.timedOut as boolean;
-          const proximoOffset = json.proximoOffset as number;
-
-          if (!timedOut || proximoOffset >= totalCursosDisponiveis) {
-            // Terminou — monta resultado acumulado
-            setResultados((r) => ({
-              ...r,
-              [acao.label]: {
-                ok: true,
-                totalCursosDisponiveis,
-                cursosComDados: totalCursosComDados,
-                cursosSemDados: totalCursosSemDados,
-                vinculados: totalVinculados,
-                detalhes: detalhesAcumulados.slice(0, 100),
-              },
-            }));
-            setEstados((e) => ({ ...e, [acao.label]: "ok" }));
-            setProgresso((p) => { const c = { ...p }; delete c[acao.label]; return c; });
-            return;
-          }
-
-          offset = proximoOffset;
+          offset    = (json.proximoOffset as number) ?? offset;
+          timedOut  = (json.timedOut as boolean) ?? false;
         }
+
+        setResultados((r) => ({
+          ...r,
+          [acao.label]: {
+            ok: true,
+            ...dadosSync,
+            vinculados: totalVinculados,
+            cursosComDados: totalCursosComDados,
+            cursosSemDados: totalCursosSemDados,
+            totalCursosDisponiveis,
+          },
+        }));
+        setEstados((e) => ({ ...e, [acao.label]: "ok" }));
+        setProgresso((p) => { const c = { ...p }; delete c[acao.label]; return c; });
       } else {
         // Chamada simples
         const res = await fetch(acao.url, { method: acao.method });

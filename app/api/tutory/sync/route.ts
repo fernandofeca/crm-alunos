@@ -182,6 +182,8 @@ async function fetchQuestoes(cookie: string): Promise<{ map: Map<string, Questao
   }
 }
 
+import * as XLSX from "xlsx";
+
 async function getSessionCookie(): Promise<string> {
   const account = process.env.TUTORY_ACCOUNT ?? "";
   const password = process.env.TUTORY_PASSWORD ?? "";
@@ -194,22 +196,155 @@ async function getSessionCookie(): Promise<string> {
   return res.headers.get("set-cookie")?.match(/PHPSESSID=[^;]+/)?.[0] ?? "";
 }
 
+// ─── Vinculação por relatórios de curso ───────────────────────────────────────
+
+function normNome(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function encontrarChave(headers: string[], candidatos: string[]): string {
+  const lower = headers.map((h) => String(h).toLowerCase().trim());
+  for (const c of candidatos) {
+    const idx = lower.indexOf(c.toLowerCase().trim());
+    if (idx !== -1) return headers[idx];
+  }
+  for (const c of candidatos) {
+    const idx = lower.findIndex((h) => h.includes(c.toLowerCase()));
+    if (idx !== -1) return headers[idx];
+  }
+  return "";
+}
+
+async function getCursoIds(cookie: string): Promise<string[]> {
+  const html = await fetch("https://admin.tutory.com.br/cursos/relatorios", {
+    headers: { Cookie: cookie },
+  }).then((r) => r.text());
+  const matches = [...html.matchAll(/<option[^>]*value=["']([1-9]\d*)["']/gi)];
+  return [...new Set(matches.map((m) => m[1]))];
+}
+
+type AlunoXLS = { tutoryId: number; email: string; nome: string; cpf: string };
+
+async function fetchCursoAlunos(cookie: string, cursoId: string): Promise<AlunoXLS[]> {
+  try {
+    const res = await fetch(
+      `https://admin.tutory.com.br/relatorios/?id=3&conc=${cursoId}`,
+      { headers: { Cookie: cookie }, signal: AbortSignal.timeout(12_000) }
+    );
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct.includes("text/html")) return [];
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.length < 50) return [];
+    const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+    if (rows.length === 0) return [];
+    const headers = Object.keys(rows[0]);
+    const colId    = encontrarChave(headers, ["id", "código", "codigo", "cod", "matricula", "matrícula", "id do aluno", "id_aluno"]);
+    const colEmail = encontrarChave(headers, ["email", "e-mail", "e mail", "endereco", "endereço"]);
+    const colNome  = encontrarChave(headers, ["nome", "aluno", "name", "estudante"]);
+    const colCpf   = encontrarChave(headers, ["cpf", "documento", "doc"]);
+    const result: AlunoXLS[] = [];
+    for (const row of rows) {
+      const id = parseInt(String(row[colId] ?? "").trim());
+      if (!id || id <= 0) continue;
+      result.push({
+        tutoryId: id,
+        email: String(row[colEmail] ?? "").toLowerCase().trim(),
+        nome:  String(row[colNome]  ?? "").trim(),
+        cpf:   String(row[colCpf]   ?? "").replace(/\D/g, ""),
+      });
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+type VincularResult = {
+  vinculados: number;
+  cursosComDados: number;
+  cursosSemDados: number;
+  totalCursosDisponiveis: number;
+  proximoOffset: number;
+  timedOut: boolean;
+};
+
+async function vincularPorRelatorios(cookie: string, offset: number, budgetMs: number): Promise<VincularResult> {
+  const startMs  = Date.now();
+  const PARALLEL = 10;
+
+  const allIds = await getCursoIds(cookie);
+  const slice  = allIds.slice(offset, offset + 500);
+
+  const semVinculo = await prisma.aluno.findMany({
+    where: { tutoryId: null },
+    select: { id: true, nome: true, email: true, cpf: true },
+  });
+
+  if (semVinculo.length === 0) {
+    return { vinculados: 0, cursosComDados: 0, cursosSemDados: 0, totalCursosDisponiveis: allIds.length, proximoOffset: allIds.length, timedOut: false };
+  }
+
+  const porEmail = new Map(semVinculo.map((a) => [a.email.toLowerCase(), a]));
+  const porCpf   = new Map(semVinculo.filter((a) => a.cpf?.length === 11).map((a) => [a.cpf!, a]));
+  const porNome  = new Map(semVinculo.map((a) => [normNome(a.nome), a]));
+
+  let vinculados = 0, cursosComDados = 0, cursosSemDados = 0, processados = 0;
+
+  for (let i = 0; i < slice.length; i += PARALLEL) {
+    if (Date.now() - startMs > budgetMs) break;
+    if (porEmail.size === 0 && porNome.size === 0 && porCpf.size === 0) break;
+    const batch   = slice.slice(i, i + PARALLEL);
+    const results = await Promise.allSettled(batch.map((id) => fetchCursoAlunos(cookie, id)));
+    processados  += batch.length;
+
+    for (const result of results) {
+      if (result.status === "rejected" || result.value.length === 0) { cursosSemDados++; continue; }
+      cursosComDados++;
+      for (const t of result.value) {
+        const via =
+          (t.email && porEmail.has(t.email)) ? "email" :
+          (t.cpf.length === 11 && porCpf.has(t.cpf)) ? "cpf" :
+          (t.nome && porNome.has(normNome(t.nome))) ? "nome" : "";
+        const aluno =
+          (t.email && porEmail.get(t.email)) ||
+          (t.cpf.length === 11 && porCpf.get(t.cpf)) ||
+          (t.nome && porNome.get(normNome(t.nome)));
+        if (aluno && via) {
+          try {
+            await prisma.aluno.update({ where: { id: aluno.id }, data: { tutoryId: t.tutoryId } });
+            porEmail.delete(t.email);
+            porCpf.delete(t.cpf);
+            porNome.delete(normNome(t.nome));
+            vinculados++;
+          } catch { /* ignore */ }
+        }
+      }
+    }
+  }
+
+  const timedOut      = processados < slice.length && Date.now() - startMs > budgetMs;
+  const proximoOffset = offset + processados;
+  return { vinculados, cursosComDados, cursosSemDados, totalCursosDisponiveis: allIds.length, proximoOffset, timedOut };
+}
+
+// ─── handlers ─────────────────────────────────────────────────────────────────
+
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (key !== "cg-bulk-2026") return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  // ?debug=atraso → inspeciona botões/forms da página de atraso
   if (req.nextUrl.searchParams.get("debug") === "atraso") {
     const cookie = await getSessionCookie();
     const html = await fetch("https://admin.tutory.com.br/alunos/atraso?p=1", { headers: { Cookie: cookie } }).then(r => r.text());
     const botoes = [...html.matchAll(/(?:href|action|data-url|data-href)=["']([^"']*retirar[^"']*)["']/gi)].map(m => m[1]);
-    const forms = [...html.matchAll(/<form[^>]*action=["']([^"']*)["'][^>]*>/gi)].map(m => m[1]);
+    const forms  = [...html.matchAll(/<form[^>]*action=["']([^"']*)["'][^>]*>/gi)].map(m => m[1]);
     const onclick = [...html.matchAll(/onclick=["']([^"']*replan[^"']*|[^"']*retirar[^"']*)["']/gi)].map(m => m[1]);
-    const links = [...html.matchAll(/href=["']([^"']*retirar[^"'|]*replan[^"']*)["']/gi)].map(m => m[1]);
+    const links  = [...html.matchAll(/href=["']([^"']*retirar[^"'|]*replan[^"']*)["']/gi)].map(m => m[1]);
     return NextResponse.json({ botoes, forms, onclick, links, htmlSnippet: html.slice(html.indexOf("retirar") - 200, html.indexOf("retirar") + 400).replace(/<[^>]*>/g, " ") });
   }
-  // Cron: responde imediatamente e roda o sync em background
-  // (cron-job.org tem timeout de 30s, mas o sync demora mais)
-  executarSync().catch((e) => console.error("[sync-bg]", e));
+  // Cron: responde imediatamente, sync em background (sem varredura de cursos)
+  executarSync(false, 0).catch((e) => console.error("[sync-bg]", e));
   return NextResponse.json({
     ok: true,
     message: "Sync iniciado em background",
@@ -219,16 +354,32 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
-  if (key === "cg-bulk-2026") return executarSync();
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  return executarSync();
+  if (key !== "cg-bulk-2026") {
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
+  const offsetParam = req.nextUrl.searchParams.get("offset");
+  const offset = offsetParam !== null ? parseInt(offsetParam) : -1;
+
+  // offset=-1 ou ausente → sync completo (sem varredura de cursos, para compatibilidade)
+  // offset=0  → sync completo + inicia varredura de cursos
+  // offset>0  → apenas continua varredura de cursos
+  if (offset > 0) {
+    return executarSoVincular(offset);
+  }
+  return executarSync(offset === 0, 0);
 }
 
-async function executarSync() {
+// Apenas continua a varredura de cursos (chamada automática do autoContinue)
+async function executarSoVincular(offset: number) {
+  const cookie = await getSessionCookie();
+  if (!cookie) return NextResponse.json({ error: "Login falhou" }, { status: 500 });
+  const resultado = await vincularPorRelatorios(cookie, offset, 50_000);
+  return NextResponse.json({ ok: true, ...resultado });
+}
 
+async function executarSync(incluirVinculacao: boolean, vinculacaoOffset: number) {
   try {
-    // Single login — share cookie across all HTML scraping functions
     const cookieHeader = await getSessionCookie();
     const apiHeaders: Record<string, string> = process.env.TUTORY_TOKEN
       ? { Authorization: `Bearer ${process.env.TUTORY_TOKEN}` }
@@ -250,7 +401,7 @@ async function executarSync() {
 
     const resultados = { criados: 0, atualizados: 0, erros: [] as string[] };
 
-    // 1. Sync basic student data from listar-alunos
+    // 1. Sync dados básicos via listar-alunos
     for (const t of tutoryAlunos) {
       try {
         const ativo = isAtivo(t);
@@ -267,7 +418,6 @@ async function executarSync() {
         if (!existente && cpf.length === 11 && !cpf.startsWith("000")) {
           existente = await prisma.aluno.findFirst({ where: { cpf } }) ?? null;
         }
-        // Fallback: match by normalized name (remove accents, lowercase, collapse spaces)
         if (!existente && nome && nome !== "Sem nome") {
           const normalizar = (s: string) =>
             s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -279,16 +429,7 @@ async function executarSync() {
         if (existente) {
           await prisma.aluno.update({
             where: { id: existente.id },
-            data: {
-              nome: nome || existente.nome,
-              whatsapp: whatsapp || existente.whatsapp,
-              concurso: concurso || existente.concurso,
-              planoVencimento,
-              ativo,
-              tutoryId: t.id,
-              ...(cpf && !existente.cpf ? { cpf } : {}),
-              ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}),
-            },
+            data: { nome: nome || existente.nome, whatsapp: whatsapp || existente.whatsapp, concurso: concurso || existente.concurso, planoVencimento, ativo, tutoryId: t.id, ...(cpf && !existente.cpf ? { cpf } : {}), ...(tutoryCreatedAt ? { tutoryCreatedAt } : {}) },
           });
           resultados.atualizados++;
         } else if (ativo) {
@@ -302,23 +443,17 @@ async function executarSync() {
       }
     }
 
-    // 2. Update diasAtraso for ALL CRM students based on scraped atraso page
-    //    (independent of listar-alunos — covers older students too)
-    //    ok=true means the page loaded correctly (even with 0 results = all delays cleared)
-    //    ok=false means login failed or network error — skip to avoid wiping valid data
+    // 2. Atualiza diasAtraso
     if (diasAtrasoOk) {
-      // Students with delays: set their diasAtraso
       for (const [email, dias] of diasAtrasoMap) {
         await prisma.aluno.updateMany({ where: { email }, data: { diasAtraso: dias } });
       }
-      // All other active students: reset to 0 (including when map is empty = no delays at all)
       await prisma.aluno.updateMany({
         where: { ativo: true, email: { notIn: [...diasAtrasoMap.keys()] } },
         data: { diasAtraso: 0 },
       });
     }
 
-    // 2b. Auto-flag "Acompanhar de Perto" for new students (dataInicio <= 30d) with 4+ days delay
     const trintaDias = new Date();
     trintaDias.setDate(trintaDias.getDate() - 30);
     await prisma.aluno.updateMany({
@@ -326,7 +461,7 @@ async function executarSync() {
       data: { acompanharDePerto: true },
     });
 
-    // 3. Update taxaAcertos/totalQuestoes for ALL CRM students based on questoes page
+    // 3. Atualiza taxaAcertos/totalQuestoes
     let questoesAtualizados = 0;
     if (questoesMap.size > 0) {
       for (const [email, { taxaAcertos, totalQuestoes }] of questoesMap) {
@@ -335,14 +470,30 @@ async function executarSync() {
       }
     }
 
+    // 4. Vinculação por relatórios de curso (se solicitada, com budget restante ~25s)
+    let vincularResult: VincularResult | null = null;
+    if (incluirVinculacao) {
+      vincularResult = await vincularPorRelatorios(cookieHeader, vinculacaoOffset, 25_000);
+    }
+
     await registrarLog({
       tipo: "sistema",
       acao: "tutory_sync",
-      descricao: `Sincronizou Tutory: ${resultados.criados} criados, ${resultados.atualizados} atualizados`,
-      meta: { criados: resultados.criados, atualizados: resultados.atualizados, total: tutoryAlunos.length },
+      descricao: `Sincronizou Tutory: ${resultados.criados} criados, ${resultados.atualizados} atualizados${vincularResult ? `, ${vincularResult.vinculados} IDs vinculados` : ""}`,
+      meta: { criados: resultados.criados, atualizados: resultados.atualizados, total: tutoryAlunos.length, vinculados: vincularResult?.vinculados ?? 0 },
     });
 
-    return NextResponse.json({ ...resultados, total: tutoryAlunos.length, diasAtrasoDebug, questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`, paginacaoDebug });
+    return NextResponse.json({
+      ok: true,
+      ...resultados,
+      salvos: resultados.atualizados,
+      total: tutoryAlunos.length,
+      diasAtrasoDebug,
+      questoesDebug: `${questoesDebug} | ${questoesAtualizados} aluno(s) no CRM`,
+      paginacaoDebug,
+      // Campos de vinculação (presentes só quando incluirVinculacao=true)
+      ...(vincularResult ?? {}),
+    });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro na sincronização" },
