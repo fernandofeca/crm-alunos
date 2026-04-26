@@ -51,6 +51,15 @@ const ACOES: Acao[] = [
     corHover: "hover:bg-teal-700",
     icone: "📊",
   },
+  {
+    label: "Vincular IDs Faltantes",
+    descricao: "Busca todos os alunos na Tutory e vincula os que ainda não têm ID (por email, CPF ou nome)",
+    url: "/api/tutory/vincular-ids",
+    method: "POST",
+    cor: "bg-violet-600 text-white",
+    corHover: "hover:bg-violet-700",
+    icone: "🔗",
+  },
 ];
 
 function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
@@ -62,6 +71,8 @@ function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
   if (typeof dados.total === "number") resumo.push(`${dados.total} alunos`);
   if (typeof dados.totalAlunos === "number") resumo.push(`${dados.totalAlunos} alunos`);
   if (typeof dados.emailsEnviados === "number") resumo.push(`${dados.emailsEnviados} emails enviados`);
+  if (typeof dados.vinculados === "number") resumo.push(`${dados.vinculados} vinculados`);
+  if (typeof dados.semMatch === "number" && dados.semMatch > 0) resumo.push(`${dados.semMatch} sem match`);
   if (typeof dados.semUrl === "number" && dados.semUrl > 0)
     resumo.push(`⚠️ ${dados.semUrl} sem URL de painel`);
   if (typeof dados.executadoEm === "string") resumo.push(dados.executadoEm as string);
