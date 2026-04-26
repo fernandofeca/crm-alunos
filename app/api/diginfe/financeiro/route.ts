@@ -125,7 +125,10 @@ async function fetchNfeMes(token: string, dataIni: Date, dataFim: Date): Promise
     let parou = false;
 
     for (const item of content) {
-      const d = new Date(item.notaFiscal.dataEmissao);
+      const raw = new Date(item.notaFiscal.dataEmissao);
+      // Normaliza para data-pura UTC usando componentes locais (API retorna sem fuso)
+      // Evita que UTC-3 desloque notas do último dia do mês para fora do período
+      const d = new Date(Date.UTC(raw.getFullYear(), raw.getMonth(), raw.getDate()));
       // notas vêm em ordem decrescente — parar quando atingir data anterior ao período
       if (d < dataIni) { parou = true; break; }
       if (d > dataFim) continue;
