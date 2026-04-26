@@ -118,7 +118,7 @@ function normNome(s: string): string {
 async function executar(offset: number, limit: number) {
   const startMs  = Date.now();
   const BUDGET   = 52_000; // 52 s (Railway permite ~60 s)
-  const PARALLEL = 6;      // requisições simultâneas à Tutory
+  const PARALLEL = 10;     // requisições simultâneas à Tutory
 
   const cookie = await getSessionCookie();
   if (!cookie) return NextResponse.json({ error: "Login falhou" }, { status: 500 });

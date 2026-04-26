@@ -12,6 +12,8 @@ interface Acao {
   cor: string;
   corHover: string;
   icone: string;
+  /** Se true, continua chamando o endpoint com ?offset= até timedOut=false */
+  autoContinue?: boolean;
 }
 
 const ACOES: Acao[] = [
@@ -53,12 +55,13 @@ const ACOES: Acao[] = [
   },
   {
     label: "Vincular IDs Faltantes",
-    descricao: "Busca todos os alunos na Tutory e vincula os que ainda não têm ID (por email, CPF ou nome)",
+    descricao: "Itera pelos relatórios de todos os cursos e vincula alunos históricos sem ID",
     url: "/api/tutory/vincular-ids",
     method: "POST",
     cor: "bg-violet-600 text-white",
     corHover: "hover:bg-violet-700",
     icone: "🔗",
+    autoContinue: true,
   },
 ];
 
@@ -72,25 +75,19 @@ function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
   if (typeof dados.totalAlunos === "number") resumo.push(`${dados.totalAlunos} alunos`);
   if (typeof dados.emailsEnviados === "number") resumo.push(`${dados.emailsEnviados} emails enviados`);
   if (typeof dados.vinculados === "number") resumo.push(`${dados.vinculados} vinculados`);
-  if (typeof dados.cursosComDados === "number") resumo.push(`${dados.cursosComDados} cursos processados`);
+  if (typeof dados.cursosComDados === "number") resumo.push(`${dados.cursosComDados} cursos com dados`);
+  if (typeof dados.totalCursosDisponiveis === "number")
+    resumo.push(`de ${dados.totalCursosDisponiveis} cursos`);
   if (typeof dados.semMatch === "number" && dados.semMatch > 0) resumo.push(`${dados.semMatch} sem match`);
   if (typeof dados.semUrl === "number" && dados.semUrl > 0)
     resumo.push(`⚠️ ${dados.semUrl} sem URL de painel`);
   if (typeof dados.elapsed === "number") resumo.push(`${dados.elapsed}s`);
-  if (dados.timedOut === true) resumo.push("⚠️ interrompido por timeout");
   if (typeof dados.executadoEm === "string") resumo.push(dados.executadoEm as string);
   if (typeof dados.msg === "string") resumo.push(dados.msg as string);
 
   return (
     <div className="mt-2 text-xs">
-      {resumo.length > 0 && (
-        <p className="text-green-700">{resumo.join(" · ")}</p>
-      )}
-      {dados.timedOut === true && typeof dados.proximoOffset === "number" && (
-        <p className="text-amber-600 mt-1">
-          Continue com: <span className="font-mono">?offset={dados.proximoOffset as number}</span>
-        </p>
-      )}
+      {resumo.length > 0 && <p className="text-green-700">{resumo.join(" · ")}</p>}
       <button
         onClick={() => setAberto((v) => !v)}
         className="text-slate-400 hover:text-slate-600 underline mt-1"
@@ -109,23 +106,82 @@ function ResultadoDetalhe({ dados }: { dados: Record<string, unknown> }) {
 export default function AcoesTutory() {
   const [estados, setEstados] = useState<Record<string, Status>>({});
   const [resultados, setResultados] = useState<Record<string, Record<string, unknown>>>({});
+  const [progresso, setProgresso] = useState<Record<string, string>>({});
 
   async function executar(acao: Acao) {
     setEstados((e) => ({ ...e, [acao.label]: "loading" }));
-    setResultados((r) => {
-      const copia = { ...r };
-      delete copia[acao.label];
-      return copia;
-    });
+    setResultados((r) => { const c = { ...r }; delete c[acao.label]; return c; });
+    setProgresso((p) => { const c = { ...p }; delete c[acao.label]; return c; });
 
     try {
-      const res = await fetch(acao.url, { method: acao.method });
-      const json = await res.json();
-      setResultados((r) => ({ ...r, [acao.label]: json }));
-      setEstados((e) => ({ ...e, [acao.label]: res.ok ? "ok" : "erro" }));
+      if (acao.autoContinue) {
+        // Chama repetidamente com offset até processar todos os cursos
+        let offset = 0;
+        let totalVinculados = 0;
+        let totalCursosComDados = 0;
+        let totalCursosSemDados = 0;
+        let totalCursosDisponiveis = 0;
+        const detalhesAcumulados: unknown[] = [];
+
+        while (true) {
+          const url = `${acao.url}?offset=${offset}`;
+          setProgresso((p) => ({
+            ...p,
+            [acao.label]: offset === 0
+              ? "Iniciando…"
+              : `Processando cursos a partir de ${offset}…`,
+          }));
+
+          const res = await fetch(url, { method: acao.method });
+          const json = await res.json() as Record<string, unknown>;
+
+          if (!res.ok) {
+            setResultados((r) => ({ ...r, [acao.label]: json }));
+            setEstados((e) => ({ ...e, [acao.label]: "erro" }));
+            setProgresso((p) => { const c = { ...p }; delete c[acao.label]; return c; });
+            return;
+          }
+
+          totalVinculados      += (json.vinculados      as number) ?? 0;
+          totalCursosComDados  += (json.cursosComDados  as number) ?? 0;
+          totalCursosSemDados  += (json.cursosSemDados  as number) ?? 0;
+          totalCursosDisponiveis = (json.totalCursosDisponiveis as number) ?? totalCursosDisponiveis;
+          if (Array.isArray(json.detalhes)) detalhesAcumulados.push(...json.detalhes);
+
+          const timedOut      = json.timedOut as boolean;
+          const proximoOffset = json.proximoOffset as number;
+
+          if (!timedOut || proximoOffset >= totalCursosDisponiveis) {
+            // Terminou — monta resultado acumulado
+            setResultados((r) => ({
+              ...r,
+              [acao.label]: {
+                ok: true,
+                totalCursosDisponiveis,
+                cursosComDados: totalCursosComDados,
+                cursosSemDados: totalCursosSemDados,
+                vinculados: totalVinculados,
+                detalhes: detalhesAcumulados.slice(0, 100),
+              },
+            }));
+            setEstados((e) => ({ ...e, [acao.label]: "ok" }));
+            setProgresso((p) => { const c = { ...p }; delete c[acao.label]; return c; });
+            return;
+          }
+
+          offset = proximoOffset;
+        }
+      } else {
+        // Chamada simples
+        const res = await fetch(acao.url, { method: acao.method });
+        const json = await res.json();
+        setResultados((r) => ({ ...r, [acao.label]: json }));
+        setEstados((e) => ({ ...e, [acao.label]: res.ok ? "ok" : "erro" }));
+      }
     } catch (e) {
       setResultados((r) => ({ ...r, [acao.label]: { error: String(e) } }));
       setEstados((e) => ({ ...e, [acao.label]: "erro" }));
+      setProgresso((p) => { const c = { ...p }; delete c[acao.label]; return c; });
     }
   }
 
@@ -134,8 +190,9 @@ export default function AcoesTutory() {
       <h2 className="text-base font-semibold text-slate-700 mb-3">Ações Tutory</h2>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {ACOES.map((acao) => {
-          const status = estados[acao.label] ?? "idle";
+          const status    = estados[acao.label] ?? "idle";
           const resultado = resultados[acao.label];
+          const prog      = progresso[acao.label];
 
           return (
             <div
@@ -156,9 +213,11 @@ export default function AcoesTutory() {
                 {status === "loading" ? "Executando…" : "Executar"}
               </button>
 
-              {status === "ok" && resultado && (
-                <ResultadoDetalhe dados={resultado} />
+              {status === "loading" && prog && (
+                <p className="text-xs text-slate-500 animate-pulse">{prog}</p>
               )}
+
+              {status === "ok" && resultado && <ResultadoDetalhe dados={resultado} />}
               {status === "erro" && resultado && (
                 <div className="mt-1 text-xs text-red-600">
                   Erro: {(resultado.error as string) ?? "Falha desconhecida"}
