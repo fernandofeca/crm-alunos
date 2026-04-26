@@ -85,13 +85,13 @@ async function fetchNfseMes(token: string, dataIni: Date, dataFim: Date): Promis
       idEmpresa:  EMPRESA_ID,
       dataInicio: ini,
       dataFim:    fim,
-    }) as { content?: Array<{ status: string; valorLiquido?: number; servico?: { valorLiquido?: number } }>; totalPages?: number } | null;
+    }) as { content?: Array<{ notaFiscal: { status: string; valorLiquido?: number } }>; totalPages?: number } | null;
     if (!data) break;
     const content    = data.content ?? [];
     const totalPages = data.totalPages ?? 1;
     for (const nota of content) {
-      if (nota.status === "CANCELADA") continue;
-      total += nota.valorLiquido ?? nota.servico?.valorLiquido ?? 0;
+      if (nota.notaFiscal.status !== "AUTORIZADA") continue;
+      total += nota.notaFiscal.valorLiquido ?? 0;
     }
     hasMore = page < totalPages;
     page++;
