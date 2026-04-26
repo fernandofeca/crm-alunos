@@ -222,6 +222,7 @@ export default function FinanceiroPage() {
       {!loading && dados && !erro && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* coluna produto */}
             <div className="flex flex-col gap-2">
               <CardTotal
                 label="Total NF Produto"
@@ -231,24 +232,40 @@ export default function FinanceiroPage() {
                 icone="📦"
               />
               <div className="rounded-xl px-4 py-3 bg-sky-100 border border-sky-200 text-sky-800 flex items-center justify-between">
-                <span className="text-xs font-semibold opacity-70">6,197% sobre produto</span>
+                <span className="text-xs font-semibold opacity-70">🧾 Imposto sobre Produto <span className="opacity-50">(6,197%)</span></span>
                 <span className="text-sm font-bold">{moeda(dados.totalProduto * 0.06197)}</span>
               </div>
             </div>
-            <CardTotal
-              label="Total NF Serviço"
-              valor={dados.totalServico}
-              qtd={dados.qtdNfse}
-              cor="bg-indigo-50 text-indigo-800 border border-indigo-200"
-              icone="🛠️"
-            />
-            <CardTotal
-              label="Faturamento Total"
-              valor={dados.totalGeral}
-              qtd={dados.qtdNfe + dados.qtdNfse}
-              cor="bg-emerald-50 text-emerald-800 border border-emerald-200"
-              icone="💰"
-            />
+
+            {/* coluna serviço */}
+            <div className="flex flex-col gap-2">
+              <CardTotal
+                label="Total NF Serviço"
+                valor={dados.totalServico}
+                qtd={dados.qtdNfse}
+                cor="bg-indigo-50 text-indigo-800 border border-indigo-200"
+                icone="🛠️"
+              />
+              <div className="rounded-xl px-4 py-3 bg-indigo-100 border border-indigo-200 text-indigo-800 flex items-center justify-between">
+                <span className="text-xs font-semibold opacity-70">🧾 Imposto sobre Serviço <span className="opacity-50">(14%)</span></span>
+                <span className="text-sm font-bold">{moeda(dados.totalServico * 0.14)}</span>
+              </div>
+            </div>
+
+            {/* coluna total */}
+            <div className="flex flex-col gap-2">
+              <CardTotal
+                label="Faturamento Total"
+                valor={dados.totalGeral}
+                qtd={dados.qtdNfe + dados.qtdNfse}
+                cor="bg-emerald-50 text-emerald-800 border border-emerald-200"
+                icone="💰"
+              />
+              <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-200 text-red-800 flex items-center justify-between">
+                <span className="text-xs font-semibold opacity-70">🧾 Imposto a Pagar</span>
+                <span className="text-sm font-bold">{moeda(dados.totalProduto * 0.06197 + dados.totalServico * 0.14)}</span>
+              </div>
+            </div>
           </div>
 
           {/* gráfico */}
