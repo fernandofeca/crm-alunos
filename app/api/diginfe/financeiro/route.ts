@@ -59,6 +59,11 @@ function ptDate(d: Date): string {
   return `${dd}/${mm}/${yy}`;
 }
 
+// Chave "ano-mes" para agrupar
+function mesKey(ano: number, mes: number): string {
+  return `${ano}-${mes}`;
+}
+
 async function apiGet(token: string, path: string, params: Record<string, string>): Promise<unknown> {
   const url = new URL(`https://api.digisan.com.br/api/v1/${path}`);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -70,7 +75,59 @@ async function apiGet(token: string, path: string, params: Record<string, string
   return res.json();
 }
 
-// NFS-e: server-side date filter funciona com idEmpresa
+// ─── NF-e: única varredura para todos os meses ────────────────────────────────
+// Faz ~13 chamadas em vez de 143 (11 meses × 13 páginas em paralelo).
+// Retorna mapa "ano-mes" → { total, qtd } para o período [desde, ate].
+type NfeMes = { total: number; qtd: number };
+
+async function fetchAllNfeAgrupado(
+  token: string,
+  desde: Date,  // início do período mais antigo (ex: 12 meses atrás)
+  ate:   Date,  // fim do período mais recente (ex: hoje)
+): Promise<Map<string, NfeMes>> {
+  const byMes = new Map<string, NfeMes>();
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const data = await apiGet(token, "notas-fiscais/todosPaginado", {
+      page:      String(page),
+      count:     "100",
+      idEmpresa: EMPRESA_ID,
+    }) as {
+      conteudo?: {
+        content?: Array<{ notaFiscal: { dataEmissao: string; status: string; valorTotal: number }; cancelada: boolean }>;
+        totalPages?: number;
+      };
+    } | null;
+
+    if (!data) break;
+    const content    = data?.conteudo?.content ?? [];
+    const totalPages = data?.conteudo?.totalPages ?? 1;
+    let parou = false;
+
+    for (const item of content) {
+      const raw = new Date(item.notaFiscal.dataEmissao);
+      // Normaliza para data-pura UTC (API retorna sem fuso; getFullYear/Month/Date = local)
+      const d = new Date(Date.UTC(raw.getFullYear(), raw.getMonth(), raw.getDate()));
+      if (d < desde) { parou = true; break; }
+      if (d > ate) continue;
+      if (item.cancelada || item.notaFiscal.status !== "AUTORIZADA") continue;
+
+      const key = mesKey(d.getUTCFullYear(), d.getUTCMonth());
+      const cur = byMes.get(key) ?? { total: 0, qtd: 0 };
+      byMes.set(key, { total: cur.total + (item.notaFiscal.valorTotal ?? 0), qtd: cur.qtd + 1 });
+    }
+
+    if (parou) break;
+    hasMore = page < totalPages;
+    page++;
+    if (page > 50) break;
+  }
+  return byMes;
+}
+
+// ─── NFS-e: filtro server-side funciona ──────────────────────────────────────
 async function fetchNfseMes(token: string, dataIni: Date, dataFim: Date): Promise<number> {
   const ini = ptDate(dataIni);
   const fim = ptDate(dataFim);
@@ -100,51 +157,7 @@ async function fetchNfseMes(token: string, dataIni: Date, dataFim: Date): Promis
   return total;
 }
 
-// NF-e: server-side date filter NÃO funciona — filtra client-side por data
-// Usa paginação inteligente: para quando encontra nota mais antiga que o período
-async function fetchNfeMes(token: string, dataIni: Date, dataFim: Date): Promise<{ total: number; qtd: number }> {
-  let soma = 0;
-  let qtd  = 0;
-  let page = 1;
-  let hasMore = true;
-
-  while (hasMore) {
-    const data = await apiGet(token, "notas-fiscais/todosPaginado", {
-      page:      String(page),
-      count:     "100",
-      idEmpresa: EMPRESA_ID,
-    }) as {
-      conteudo?: {
-        content?: Array<{ notaFiscal: { dataEmissao: string; status: string; valorTotal: number }; cancelada: boolean }>;
-        totalPages?: number;
-      };
-    } | null;
-    if (!data) break;
-    const content    = data?.conteudo?.content ?? [];
-    const totalPages = data?.conteudo?.totalPages ?? 1;
-    let parou = false;
-
-    for (const item of content) {
-      const raw = new Date(item.notaFiscal.dataEmissao);
-      // Normaliza para data-pura UTC usando componentes locais (API retorna sem fuso)
-      // Evita que UTC-3 desloque notas do último dia do mês para fora do período
-      const d = new Date(Date.UTC(raw.getFullYear(), raw.getMonth(), raw.getDate()));
-      // notas vêm em ordem decrescente — parar quando atingir data anterior ao período
-      if (d < dataIni) { parou = true; break; }
-      if (d > dataFim) continue;
-      if (item.cancelada || item.notaFiscal.status !== "AUTORIZADA") continue;
-      soma += item.notaFiscal.valorTotal ?? 0;
-      qtd++;
-    }
-    if (parou) break;
-    hasMore = page < totalPages;
-    page++;
-    if (page > 30) break;
-  }
-  return { total: soma, qtd };
-}
-
-// Conta NFS-e do mês (sem paginação — usa totalElements)
+// Conta NFS-e do mês (usa totalElements)
 async function countNfseMes(token: string, dataIni: Date, dataFim: Date): Promise<number> {
   const data = await apiGet(token, "notas-fiscais/municipais", {
     page:       "1",
@@ -166,8 +179,8 @@ export async function GET(req: NextRequest) {
 
   const url   = new URL(req.url);
   const now   = new Date();
-  const year  = parseInt(url.searchParams.get("year")  ?? String(now.getFullYear()));
-  const month = parseInt(url.searchParams.get("month") ?? String(now.getMonth())); // 0-based
+  const year  = parseInt(url.searchParams.get("year")  ?? String(now.getUTCFullYear()));
+  const month = parseInt(url.searchParams.get("month") ?? String(now.getUTCMonth())); // 0-based
 
   const dataIni = new Date(Date.UTC(year, month, 1));
   // Mês atual: usa hoje como fim para bater com relatórios do Diginfe
@@ -176,37 +189,44 @@ export async function GET(req: NextRequest) {
     ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
     : new Date(Date.UTC(year, month + 1, 0));
 
+  // Início do histórico: 12 meses atrás (dia 1)
+  const historicoDe = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
+
   try {
     const token = await getToken();
 
-    // Paralelo: NF-e do mês + NFS-e do mês + histórico 12 meses
-    const [nfeMes, nfseTotalMes, nfseValorMes] = await Promise.all([
-      fetchNfeMes(token, dataIni, dataFim),
+    // ── Uma única varredura de NF-e cobre o mês selecionado + 12 meses de histórico
+    // ── NFS-e: chamadas separadas por mês (filtro server-side funciona)
+    const [nfeMap, nfseTotalMes, nfseValorMes] = await Promise.all([
+      fetchAllNfeAgrupado(token, historicoDe, dataFim),
       countNfseMes(token, dataIni, dataFim),
       fetchNfseMes(token, dataIni, dataFim),
     ]);
 
-    // Histórico: 12 meses anteriores (NFS-e apenas, pois tem filtro server-side)
-    const historicoPromises = Array.from({ length: 12 }, (_, i) => {
-      const d   = new Date(Date.UTC(now.getFullYear(), now.getMonth() - 11 + i, 1));
-      const ini = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
-      const fim = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
-      const isAtual = d.getUTCFullYear() === year && d.getUTCMonth() === month;
-      return isAtual
-        // já temos esses valores
-        ? Promise.resolve({ ano: year, mes: month, produto: nfeMes.total, servico: nfseValorMes })
-        : Promise.all([
-            fetchNfeMes(token, ini, fim),
-            fetchNfseMes(token, ini, fim),
-          ]).then(([nfe, nfse]) => ({
-            ano:      d.getUTCFullYear(),
-            mes:      d.getUTCMonth(),
-            produto:  nfe.total,
-            servico:  nfse,
-          }));
-    });
+    const nfeMes: NfeMes = nfeMap.get(mesKey(year, month)) ?? { total: 0, qtd: 0 };
 
-    const historico = await Promise.all(historicoPromises);
+    // Histórico NFS-e: 12 chamadas em paralelo (OK pois cada uma é 1-2 páginas)
+    const historicoNfse = await Promise.all(
+      Array.from({ length: 12 }, (_, i) => {
+        const d   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11 + i, 1));
+        const ini = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+        const fim = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+        // Mês atual do histórico: já temos o valor
+        if (d.getUTCFullYear() === year && d.getUTCMonth() === month) {
+          return Promise.resolve({ ano: year, mes: month, nfse: nfseValorMes });
+        }
+        return fetchNfseMes(token, ini, fim).then((nfse) => ({
+          ano: d.getUTCFullYear(),
+          mes: d.getUTCMonth(),
+          nfse,
+        }));
+      })
+    );
+
+    const historico = historicoNfse.map(({ ano, mes, nfse }) => {
+      const nfe = nfeMap.get(mesKey(ano, mes)) ?? { total: 0 };
+      return { ano, mes, produto: nfe.total, servico: nfse };
+    });
 
     return NextResponse.json({
       ano:          year,
