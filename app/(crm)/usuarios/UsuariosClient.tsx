@@ -20,7 +20,13 @@ type FormData = {
 
 const emptyForm: FormData = { name: "", email: "", password: "", role: "equipe" };
 
-export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: Usuario[] }) {
+export default function UsuariosClient({
+  initialUsuarios,
+  isAdmin,
+}: {
+  initialUsuarios: Usuario[];
+  isAdmin: boolean;
+}) {
   const { data: session } = useSession();
   const [usuarios, setUsuarios] = useState<Usuario[]>(initialUsuarios);
   const [showModal, setShowModal] = useState(false);
@@ -114,14 +120,18 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Usuários</h1>
-          <p className="text-sm text-slate-500">Gerencie o acesso da sua equipe</p>
+          <p className="text-sm text-slate-500">
+            {isAdmin ? "Gerencie o acesso da sua equipe" : "Edite suas informações de perfil"}
+          </p>
         </div>
-        <button
-          onClick={abrirNovo}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
-        >
-          + Novo usuário
-        </button>
+        {isAdmin && (
+          <button
+            onClick={abrirNovo}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+          >
+            + Novo usuário
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -163,13 +173,15 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3 justify-end">
-                    <button
-                      onClick={() => abrirEditar(u)}
-                      className="text-blue-600 hover:underline text-xs"
-                    >
-                      Editar
-                    </button>
-                    {u.id !== session?.user?.id && (
+                    {(isAdmin || u.id === session?.user?.id) && (
+                      <button
+                        onClick={() => abrirEditar(u)}
+                        className="text-blue-600 hover:underline text-xs"
+                      >
+                        Editar
+                      </button>
+                    )}
+                    {isAdmin && u.id !== session?.user?.id && (
                       <button
                         onClick={() => setConfirmDelete(u)}
                         className="text-red-500 hover:underline text-xs"
@@ -230,25 +242,27 @@ export default function UsuariosClient({ initialUsuarios }: { initialUsuarios: U
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Papel</label>
-                <div className="flex gap-2">
-                  {(["equipe", "mentor"] as const).map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setForm({ ...form, role: r })}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium border transition capitalize ${
-                        form.role === r
-                          ? "bg-blue-600 text-white border-blue-600"
-                          : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
+              {isAdmin && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Papel</label>
+                  <div className="flex gap-2">
+                    {(["equipe", "mentor"] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setForm({ ...form, role: r })}
+                        className={`flex-1 py-2 rounded-lg text-sm font-medium border transition capitalize ${
+                          form.role === r
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {error && <p className="text-sm text-red-500">{error}</p>}
 

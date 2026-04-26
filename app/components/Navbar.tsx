@@ -3,8 +3,11 @@
 import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 
+const ADMINS = ["fernandofecalimas@gmail.com", "carolina@carolinagaubert.com"];
+
 export default function Navbar() {
   const { data: session } = useSession();
+  const isAdmin = ADMINS.includes(session?.user?.email ?? "");
 
   return (
     <nav className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
@@ -16,6 +19,11 @@ export default function Navbar() {
           <Link href="/" className="text-slate-600 hover:text-blue-600 transition">
             Dashboard
           </Link>
+          {isAdmin && (
+            <Link href="/financeiro" className="text-slate-600 hover:text-blue-600 transition">
+              Financeiro
+            </Link>
+          )}
           <Link href="/alunos" className="text-slate-600 hover:text-blue-600 transition">
             Alunos
           </Link>
@@ -42,9 +50,6 @@ export default function Navbar() {
           </Link>
           <Link href="/usuarios" className="text-slate-600 hover:text-blue-600 transition">
             Usuários
-          </Link>
-          <Link href="/financeiro" className="text-slate-600 hover:text-blue-600 transition">
-            Financeiro
           </Link>
           <Link href="/logs" className="text-slate-600 hover:text-blue-600 transition">
             Logs

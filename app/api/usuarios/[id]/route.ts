@@ -4,14 +4,26 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { registrarLog } from "@/lib/log";
 
+const ADMINS = ["fernandofecalimas@gmail.com", "carolina@carolinagaubert.com"];
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
   const { id } = await params;
+  const isAdmin = ADMINS.includes(session.user?.email ?? "");
+
+  // Não-admin só pode editar a si mesmo
+  if (!isAdmin && id !== session.user?.id) {
+    return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+  }
+
   const { name, email, password, role } = await req.json();
 
-  const data: Record<string, unknown> = { name, email, role };
+  // Não-admin não pode alterar o próprio role nem o email
+  const data: Record<string, unknown> = isAdmin
+    ? { name, email, role }
+    : { name };
   if (password) {
     data.password = await bcrypt.hash(password, 10);
   }
@@ -36,6 +48,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+
+  const isAdmin = ADMINS.includes(session.user?.email ?? "");
+  if (!isAdmin) return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
 
   const { id } = await params;
   const sessionId = session.user?.id;
