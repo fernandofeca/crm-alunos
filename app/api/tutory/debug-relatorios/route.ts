@@ -19,6 +19,35 @@ export async function GET(req: NextRequest) {
   const cookie = await getSessionCookie();
   if (!cookie) return NextResponse.json({ error: "Login falhou" }, { status: 500 });
 
+  // ?pagina=loja → inspeciona /loja/relatorios
+  if (req.nextUrl.searchParams.get("pagina") === "loja") {
+    const html = await fetch("https://admin.tutory.com.br/loja/relatorios", {
+      headers: { Cookie: cookie },
+    }).then((r) => r.text());
+
+    const todosLinks = [...html.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/gi)]
+      .map((m) => m[0].replace(/\s+/g, " ").trim())
+      .filter((a) => a.length < 600);
+
+    const trechosRaw: string[] = [];
+    for (const palavra of ["cadastro", "download", "relacao", "relação", "href"]) {
+      const lower = html.toLowerCase();
+      let pos = 0;
+      while (pos < html.length && trechosRaw.length < 10) {
+        const idx = lower.indexOf(palavra, pos);
+        if (idx === -1) break;
+        trechosRaw.push(`[${palavra}@${idx}]\n${html.slice(Math.max(0, idx - 200), idx + 500)}`);
+        pos = idx + 1;
+      }
+    }
+
+    return NextResponse.json({
+      htmlLength: html.length,
+      todosLinks: todosLinks.slice(0, 50),
+      trechosRaw: trechosRaw.slice(0, 8),
+    });
+  }
+
   // Usa concurso do param ou pega o primeiro ID > 0 do select
   let cursoId = req.nextUrl.searchParams.get("concurso") ?? "";
 
