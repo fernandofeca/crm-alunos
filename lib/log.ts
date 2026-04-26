@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 interface LogParams {
   tipo: "usuario" | "sistema";
@@ -20,7 +21,7 @@ export async function registrarLog(p: LogParams): Promise<void> {
         userId: p.userId ?? null,
         alunoId: p.alunoId ?? null,
         alunoNome: p.alunoNome ?? null,
-        meta: p.meta ?? {},
+        meta: (p.meta ?? {}) as Prisma.InputJsonValue,
       },
     });
   } catch {
