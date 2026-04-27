@@ -476,7 +476,7 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
                 <div className="text-4xl animate-bounce">📲</div>
                 <p className="font-semibold text-slate-800">Enviando mensagens…</p>
                 <p className="text-sm text-slate-500">
-                  Aguarde — enviando para {comWpp.length} aluno{comWpp.length !== 1 ? "s" : ""} com intervalo de 2s entre cada envio.
+                  Enviando para {comWpp.length} aluno{comWpp.length !== 1 ? "s" : ""} com intervalo aleatório de 5–9s entre cada mensagem. Não feche esta aba.
                 </p>
                 <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                   <div className="h-2 bg-green-400 rounded-full animate-pulse w-full" />

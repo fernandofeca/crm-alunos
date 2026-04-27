@@ -3,10 +3,17 @@ import { auth } from "@/auth";
 
 const ZAPI_BASE = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE_ID}/token/${process.env.ZAPI_TOKEN}`;
 const CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN ?? "";
-const DELAY_MS = 2500;
+// Intervalo aleatório entre 5s e 9s — parece comportamento humano,
+// reduz risco de bloqueio pelo WhatsApp em envios em volume
+const DELAY_MIN_MS = 5000;
+const DELAY_MAX_MS = 9000;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function delayAleatorio(): number {
+  return Math.floor(Math.random() * (DELAY_MAX_MS - DELAY_MIN_MS + 1)) + DELAY_MIN_MS;
 }
 
 function normalizarFone(numero: string): string {
@@ -93,7 +100,7 @@ export async function POST(req: NextRequest) {
     const resultado = await enviar(fone, texto, imagem);
     resultados.push({ id: aluno.id, nome: aluno.nome, ...resultado });
 
-    if (i < alunos.length - 1) await sleep(DELAY_MS);
+    if (i < alunos.length - 1) await sleep(delayAleatorio());
   }
 
   const enviados = resultados.filter((r) => r.ok).length;
