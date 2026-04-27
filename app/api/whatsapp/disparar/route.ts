@@ -15,6 +15,19 @@ function normalizarFone(numero: string): string {
   return `55${digitos}`;
 }
 
+function extrairNome(nomeCompleto: string): string {
+  // Remove emojis e caracteres especiais não-letra
+  const semEmoji = nomeCompleto.replace(/\p{Extended_Pictographic}/gu, "").trim();
+  const partes = semEmoji.split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return nomeCompleto.trim();
+  const primeiro = partes[0];
+  // Nomes "Maria X" → retorna "Maria X"
+  if (primeiro.toLowerCase() === "maria" && partes.length >= 2) {
+    return `${primeiro} ${partes[1]}`;
+  }
+  return primeiro;
+}
+
 async function enviar(
   fone: string,
   texto: string,
@@ -75,7 +88,7 @@ export async function POST(req: NextRequest) {
     }
 
     const fone  = normalizarFone(aluno.whatsapp);
-    const texto = mensagem.replace(/\[nome\]/gi, aluno.nome.split(" ")[0]);
+    const texto = mensagem.replace(/\[nome\]/gi, extrairNome(aluno.nome));
 
     const resultado = await enviar(fone, texto, imagem);
     resultados.push({ id: aluno.id, nome: aluno.nome, ...resultado });

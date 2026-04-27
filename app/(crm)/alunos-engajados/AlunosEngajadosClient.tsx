@@ -58,6 +58,17 @@ function whatsappUrl(numero: string) {
   return `https://wa.me/${limpo}`;
 }
 
+function extrairNome(nomeCompleto: string): string {
+  const semEmoji = nomeCompleto.replace(/\p{Extended_Pictographic}/gu, "").trim();
+  const partes = semEmoji.split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return nomeCompleto.trim();
+  const primeiro = partes[0];
+  if (primeiro.toLowerCase() === "maria" && partes.length >= 2) {
+    return `${primeiro} ${partes[1]}`;
+  }
+  return primeiro;
+}
+
 function whatsappUrlMsg(numero: string, primeiroNome: string, msg: string) {
   const limpo = numero.replace(/\D/g, "");
   const texto = msg.replace(/\[nome\]/gi, primeiroNome);
@@ -403,7 +414,7 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
                   />
                   <p className="text-xs text-slate-400 mt-1">
-                    Preview: {mensagem.replace(/\[nome\]/gi, comWpp[0]?.aluno.nome.split(" ")[0] ?? "Aluno")}
+                    Preview: {mensagem.replace(/\[nome\]/gi, comWpp[0] ? extrairNome(comWpp[0].aluno.nome) : "Aluno")}
                   </p>
                 </div>
 
