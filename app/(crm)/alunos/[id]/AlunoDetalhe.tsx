@@ -159,6 +159,10 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
   const [editandoDados, setEditandoDados] = useState(false);
   const [dadosForm, setDadosForm] = useState({ nome: "", email: "", cpf: "", whatsapp: "", concurso: "" });
   const [savingDados, setSavingDados] = useState(false);
+  const [fichaAberta, setFichaAberta] = useState(false);
+  const [fichaTexto, setFichaTexto] = useState<string | null>(null);
+  const [fichaCarregando, setFichaCarregando] = useState(false);
+  const [fichaErro, setFichaErro] = useState<string | null>(null);
 
   function abrirEdicao() {
     setDadosForm({ nome: aluno.nome, email: aluno.email, cpf: aluno.cpf, whatsapp: aluno.whatsapp, concurso: aluno.concurso });
@@ -171,6 +175,23 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
     await patchAluno(dadosForm as Partial<Aluno>);
     setSavingDados(false);
     setEditandoDados(false);
+  }
+
+  async function abrirFicha() {
+    setFichaAberta(true);
+    if (fichaTexto !== null || fichaCarregando || !aluno.tutoryId) return;
+    setFichaCarregando(true);
+    setFichaErro(null);
+    try {
+      const res = await fetch(`/api/tutory/ficha/${aluno.tutoryId}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro desconhecido");
+      setFichaTexto(json.ficha ?? "");
+    } catch (e) {
+      setFichaErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFichaCarregando(false);
+    }
   }
 
   async function patchAluno(campos: Partial<Aluno>) {
@@ -570,6 +591,57 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Ficha do Aluno (Tutory) */}
+      {aluno.tutoryId && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <button
+            onClick={() => fichaAberta ? setFichaAberta(false) : abrirFicha()}
+            className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">📋</span>
+              <h2 className="text-base font-semibold text-slate-700">Ficha do Aluno</h2>
+              <span className="text-xs text-slate-400">(Tutory)</span>
+            </div>
+            <svg
+              className={`w-4 h-4 text-slate-400 transition-transform ${fichaAberta ? "rotate-180" : ""}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {fichaAberta && (
+            <div className="px-6 pb-6 border-t border-slate-100">
+              {fichaCarregando ? (
+                <div className="flex items-center gap-2 py-6 text-slate-400 text-sm">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  Carregando ficha...
+                </div>
+              ) : fichaErro ? (
+                <div className="py-4 text-sm text-red-500">
+                  Erro ao carregar ficha: {fichaErro}
+                  <button
+                    onClick={() => { setFichaTexto(null); setFichaErro(null); abrirFicha(); }}
+                    className="ml-3 text-blue-600 hover:underline"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              ) : fichaTexto === "" ? (
+                <p className="py-4 text-sm text-slate-400">Nenhuma ficha preenchida no Tutory.</p>
+              ) : (
+                <pre className="mt-4 text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
+                  {fichaTexto}
+                </pre>
+              )}
+            </div>
+          )}
         </div>
       )}
 
