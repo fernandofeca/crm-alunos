@@ -329,10 +329,26 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
 
       {/* ── Modal de disparo WhatsApp ── */}
       {disparo && (() => {
-        // Somente Mentoria da Posse e Mentoria Diamante com WhatsApp cadastrado
+        // Sexta do disparo: a selecionada no filtro, ou a sexta de hoje, ou a mais recente do mês
+        const hoje = new Date().toISOString().slice(0, 10);
+        const sextaDisparo =
+          sextaFiltro ||                                          // filtro ativo
+          sextas.find((s) => s.slice(0, 10) === hoje) ||         // hoje é sexta com dados
+          sextas[sextas.length - 1] ||                           // mais recente do mês
+          "";
+
+        // Somente Mentoria da Posse e Mentoria Diamante,
+        // com WhatsApp cadastrado e com selo NA sexta do disparo
         const comWpp = entries.filter(
-          (e) => e.aluno.whatsapp && PLANOS_DISPARO.includes(e.aluno.planoTipo)
+          (e) =>
+            e.aluno.whatsapp &&
+            PLANOS_DISPARO.includes(e.aluno.planoTipo) &&
+            (sextaDisparo ? e.semanas.some((s) => s.semana === sextaDisparo) : true)
         );
+
+        const labelSexta = sextaDisparo
+          ? new Date(sextaDisparo).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })
+          : "—";
 
         async function disparar() {
           setEnviando(true);
@@ -367,7 +383,12 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-5">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-slate-800">📲 Disparar WhatsApp</h2>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800">📲 Disparar WhatsApp</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Alunos engajados em <span className="font-semibold text-green-600">{labelSexta}</span>
+                    </p>
+                  </div>
                   <button onClick={() => setDisparo(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
                 </div>
 
@@ -415,7 +436,7 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
                   ))}
                 </div>
                 <p className="text-xs text-slate-500">
-                  Apenas <span className="font-medium">Mentoria da Posse</span> e <span className="font-medium">Mentoria Diamante</span> — {comWpp.length} aluno{comWpp.length !== 1 ? "s" : ""} com WhatsApp
+                  Mentoria da Posse + Mentoria Diamante · engajados em {labelSexta} · {comWpp.length} aluno{comWpp.length !== 1 ? "s" : ""} com WhatsApp
                 </p>
 
                 <div className="flex gap-3">
