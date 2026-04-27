@@ -44,19 +44,28 @@ async function fetchFicha(tutoryId: string): Promise<string> {
     // Tenta sem aspas também
     const match2 = html.match(/<textarea[^>]*id=anamnese[^>]*>([\s\S]*?)<\/textarea>/i);
     if (!match2) return "";
-    return decodeHtmlEntities(match2[1].trim());
+    return limparHtml(match2[1].trim());
   }
-  return decodeHtmlEntities(match[1].trim());
+  return limparHtml(match[1].trim());
 }
 
-function decodeHtmlEntities(str: string): string {
+function limparHtml(str: string): string {
   return str
+    // Converte <br> e </p> em quebra de linha antes de remover tags
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    // Remove todas as demais tags HTML
+    .replace(/<[^>]*>/g, "")
+    // Decodifica entidades HTML
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
+    .replace(/&nbsp;/g, " ")
+    // Remove linhas em branco extras
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export async function GET(
