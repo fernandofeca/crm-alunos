@@ -58,6 +58,16 @@ function whatsappUrl(numero: string) {
   return `https://wa.me/${limpo}`;
 }
 
+function whatsappUrlMsg(numero: string, primeiroNome: string, msg: string) {
+  const limpo = numero.replace(/\D/g, "");
+  const texto = msg.replace(/\[nome\]/gi, primeiroNome);
+  return `https://wa.me/${limpo}?text=${encodeURIComponent(texto)}`;
+}
+
+const MSG_PADRAO =
+  "Olá, [nome]! 🏆 Você conquistou o selo de engajamento esta semana! Parabéns pelo seu empenho e dedicação! Continue assim! 💪";
+
+
 export default function AlunosEngajadosClient({ conquistas, concursos, sextas, mesAtual, mesesDisponiveis }: Props) {
   const router = useRouter();
   const [planoFiltro, setPlanoFiltro] = useState<string[]>([]);
@@ -67,6 +77,12 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
   const [concursoOpen, setConcursoOpen] = useState(false);
   const planoRef = useRef<HTMLDivElement>(null);
   const concursoRef = useRef<HTMLDivElement>(null);
+
+  // ── Disparo WhatsApp
+  const [disparo, setDisparo] = useState<"config" | "enviando" | null>(null);
+  const [mensagem, setMensagem] = useState(MSG_PADRAO);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [enviados, setEnviados] = useState<Set<string>>(new Set());
 
   // Reset sexta filter when month changes
   useEffect(() => { setSextaFiltro(""); }, [mesAtual]);
@@ -203,6 +219,20 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
         <div className="flex items-center text-sm text-slate-500 ml-1">
           {entries.length} aluno{entries.length !== 1 ? "s" : ""}
         </div>
+
+        {/* Botão disparo */}
+        {entries.some((e) => e.aluno.whatsapp) && (
+          <button
+            onClick={() => {
+              setCurrentIdx(0);
+              setEnviados(new Set());
+              setDisparo("config");
+            }}
+            className="ml-auto flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+          >
+            📲 Disparar WhatsApp
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -287,6 +317,149 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
           </tbody>
         </table>
       </div>
+
+      {/* ── Modal de disparo WhatsApp ── */}
+      {disparo && (() => {
+        const comWpp = entries.filter((e) => e.aluno.whatsapp);
+        const atual  = comWpp[currentIdx];
+        const total  = comWpp.length;
+        const fim    = currentIdx >= total;
+
+        // ── Tela de configuração
+        if (disparo === "config") {
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-5">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-slate-800">📲 Disparar WhatsApp</h2>
+                  <button onClick={() => setDisparo(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Mensagem <span className="text-slate-400 font-normal">— use [nome] para personalizar</span>
+                  </label>
+                  <textarea
+                    value={mensagem}
+                    onChange={(e) => setMensagem(e.target.value)}
+                    rows={5}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Preview: {mensagem.replace(/\[nome\]/gi, atual?.aluno.nome.split(" ")[0] ?? "Aluno").slice(0, 80)}…
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 max-h-40 overflow-y-auto space-y-1">
+                  {comWpp.map((e, i) => (
+                    <div key={e.aluno.id} className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs w-5 text-right">{i + 1}.</span>
+                      <span className="font-medium">{e.aluno.nome}</span>
+                      <span className="text-slate-400 text-xs">{e.aluno.whatsapp}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500">
+                  {comWpp.length} aluno{comWpp.length !== 1 ? "s" : ""} com WhatsApp
+                  {entries.length - comWpp.length > 0 && ` · ${entries.length - comWpp.length} sem número (serão pulados)`}
+                </p>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDisparo("enviando")}
+                    className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg text-sm transition"
+                  >
+                    Iniciar envio →
+                  </button>
+                  <button onClick={() => setDisparo(null)} className="flex-1 border border-slate-300 text-slate-600 text-sm font-medium py-2 rounded-lg hover:bg-slate-50 transition">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // ── Tela de envio sequencial
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-slate-800">📲 Enviando mensagens</h2>
+                <button onClick={() => setDisparo(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+              </div>
+
+              {/* Progresso */}
+              <div>
+                <div className="flex justify-between text-xs text-slate-500 mb-1">
+                  <span>{fim ? "Concluído!" : `Aluno ${currentIdx + 1} de ${total}`}</span>
+                  <span>{enviados.size} enviado{enviados.size !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-2">
+                  <div
+                    className="bg-green-500 h-2 rounded-full transition-all"
+                    style={{ width: `${(currentIdx / total) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {fim ? (
+                // ── Resumo final
+                <div className="text-center space-y-3 py-4">
+                  <p className="text-4xl">🎉</p>
+                  <p className="font-semibold text-slate-800">Disparo concluído!</p>
+                  <p className="text-sm text-slate-500">{enviados.size} mensagem{enviados.size !== 1 ? "s" : ""} enviada{enviados.size !== 1 ? "s" : ""} de {total}</p>
+                  <button
+                    onClick={() => setDisparo(null)}
+                    className="mt-2 bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-2 rounded-lg text-sm transition"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              ) : (
+                // ── Aluno atual
+                <div className="space-y-4">
+                  <div className={`rounded-xl p-4 border-2 ${enviados.has(atual.aluno.id) ? "border-green-300 bg-green-50" : "border-slate-200 bg-slate-50"}`}>
+                    <p className="font-bold text-slate-800 text-lg">{atual.aluno.nome}</p>
+                    <p className="text-sm text-slate-500 mt-0.5">{atual.aluno.whatsapp}</p>
+                    <p className="text-xs text-slate-400 mt-1">{atual.aluno.concurso} · {atual.aluno.planoTipo}</p>
+                  </div>
+
+                  <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 italic line-clamp-3">
+                    {mensagem.replace(/\[nome\]/gi, atual.aluno.nome.split(" ")[0])}
+                  </div>
+
+                  <a
+                    href={whatsappUrlMsg(atual.aluno.whatsapp, atual.aluno.nome.split(" ")[0], mensagem)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setEnviados((prev) => new Set([...prev, atual.aluno.id]))}
+                    className="flex items-center justify-center gap-2 w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm transition"
+                  >
+                    💬 Abrir WhatsApp
+                  </a>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setCurrentIdx((i) => i + 1)}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg text-sm transition"
+                    >
+                      {currentIdx + 1 < total ? "Próximo →" : "Concluir ✓"}
+                    </button>
+                    <button
+                      onClick={() => setCurrentIdx((i) => i + 1)}
+                      className="px-4 border border-slate-300 text-slate-500 text-sm rounded-lg hover:bg-slate-50 transition"
+                      title="Pular este aluno"
+                    >
+                      Pular
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
