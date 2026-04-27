@@ -67,6 +67,8 @@ function whatsappUrlMsg(numero: string, primeiroNome: string, msg: string) {
 const MSG_PADRAO =
   "Olá, [nome]! 🏆 Você conquistou o selo de engajamento esta semana! Parabéns pelo seu empenho e dedicação! Continue assim! 💪";
 
+const PLANOS_DISPARO = ["Mentoria da Posse", "Mentoria Diamante"];
+
 
 export default function AlunosEngajadosClient({ conquistas, concursos, sextas, mesAtual, mesesDisponiveis }: Props) {
   const router = useRouter();
@@ -83,8 +85,17 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
   type Resultado = { id: string; nome: string; ok: boolean; erro?: string };
   const [disparo, setDisparo] = useState<FaseDisparo>(null);
   const [mensagem, setMensagem] = useState(MSG_PADRAO);
+  const [imagem, setImagem] = useState<string | null>(null);
   const [resultados, setResultados] = useState<Resultado[]>([]);
   const [enviando, setEnviando] = useState(false);
+
+  function handleImagem(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setImagem(reader.result as string);
+    reader.readAsDataURL(file);
+  }
 
   // Reset sexta filter when month changes
   useEffect(() => { setSextaFiltro(""); }, [mesAtual]);
@@ -223,9 +234,9 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
         </div>
 
         {/* Botão disparo */}
-        {entries.some((e) => e.aluno.whatsapp) && (
+        {entries.some((e) => e.aluno.whatsapp && PLANOS_DISPARO.includes(e.aluno.planoTipo)) && (
           <button
-            onClick={() => { setResultados([]); setDisparo("config"); }}
+            onClick={() => { setResultados([]); setImagem(null); setDisparo("config"); }}
             className="ml-auto flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
           >
             📲 Disparar WhatsApp
@@ -318,7 +329,10 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
 
       {/* ── Modal de disparo WhatsApp ── */}
       {disparo && (() => {
-        const comWpp = entries.filter((e) => e.aluno.whatsapp);
+        // Somente Mentoria da Posse e Mentoria Diamante com WhatsApp cadastrado
+        const comWpp = entries.filter(
+          (e) => e.aluno.whatsapp && PLANOS_DISPARO.includes(e.aluno.planoTipo)
+        );
 
         async function disparar() {
           setEnviando(true);
@@ -329,6 +343,7 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 mensagem,
+                imagem: imagem ?? undefined,
                 alunos: comWpp.map((e) => ({
                   id: e.aluno.id,
                   nome: e.aluno.nome,
@@ -371,6 +386,25 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
                   </p>
                 </div>
 
+                {/* Upload de imagem */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Imagem <span className="text-slate-400 font-normal">(obrigatória)</span></label>
+                  <label className="flex items-center gap-3 cursor-pointer border-2 border-dashed border-slate-300 hover:border-green-400 rounded-xl p-3 transition">
+                    <span className="text-2xl">{imagem ? "🖼️" : "📁"}</span>
+                    <span className="text-sm text-slate-600">
+                      {imagem ? "Imagem selecionada — clique para trocar" : "Clique para selecionar a imagem"}
+                    </span>
+                    <input type="file" accept="image/*" onChange={handleImagem} className="hidden" />
+                  </label>
+                  {imagem && (
+                    <div className="mt-2 flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={imagem} alt="preview" className="h-16 w-16 object-cover rounded-lg border border-slate-200" />
+                      <button onClick={() => setImagem(null)} className="text-xs text-red-500 hover:underline">Remover</button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 max-h-40 overflow-y-auto space-y-1">
                   {comWpp.map((e, i) => (
                     <div key={e.aluno.id} className="flex items-center gap-2">
@@ -381,16 +415,17 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
                   ))}
                 </div>
                 <p className="text-xs text-slate-500">
-                  {comWpp.length} aluno{comWpp.length !== 1 ? "s" : ""} com WhatsApp
-                  {entries.length - comWpp.length > 0 && ` · ${entries.length - comWpp.length} sem número (serão pulados)`}
+                  Apenas <span className="font-medium">Mentoria da Posse</span> e <span className="font-medium">Mentoria Diamante</span> — {comWpp.length} aluno{comWpp.length !== 1 ? "s" : ""} com WhatsApp
                 </p>
 
                 <div className="flex gap-3">
                   <button
                     onClick={disparar}
-                    className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg text-sm transition"
+                    disabled={!imagem}
+                    className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-lg text-sm transition"
+                    title={!imagem ? "Selecione uma imagem antes de enviar" : ""}
                   >
-                    🚀 Enviar para todos
+                    🚀 Enviar para todos ({comWpp.length})
                   </button>
                   <button onClick={() => setDisparo(null)} className="flex-1 border border-slate-300 text-slate-600 text-sm font-medium py-2 rounded-lg hover:bg-slate-50 transition">
                     Cancelar
