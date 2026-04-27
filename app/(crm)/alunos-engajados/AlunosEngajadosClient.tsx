@@ -79,10 +79,12 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
   const concursoRef = useRef<HTMLDivElement>(null);
 
   // ── Disparo WhatsApp
-  const [disparo, setDisparo] = useState<"config" | "enviando" | null>(null);
+  type FaseDisparo = "config" | "enviando" | "resultado" | null;
+  type Resultado = { id: string; nome: string; ok: boolean; erro?: string };
+  const [disparo, setDisparo] = useState<FaseDisparo>(null);
   const [mensagem, setMensagem] = useState(MSG_PADRAO);
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const [enviados, setEnviados] = useState<Set<string>>(new Set());
+  const [resultados, setResultados] = useState<Resultado[]>([]);
+  const [enviando, setEnviando] = useState(false);
 
   // Reset sexta filter when month changes
   useEffect(() => { setSextaFiltro(""); }, [mesAtual]);
@@ -223,11 +225,7 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
         {/* Botão disparo */}
         {entries.some((e) => e.aluno.whatsapp) && (
           <button
-            onClick={() => {
-              setCurrentIdx(0);
-              setEnviados(new Set());
-              setDisparo("config");
-            }}
+            onClick={() => { setResultados([]); setDisparo("config"); }}
             className="ml-auto flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
           >
             📲 Disparar WhatsApp
@@ -321,9 +319,32 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
       {/* ── Modal de disparo WhatsApp ── */}
       {disparo && (() => {
         const comWpp = entries.filter((e) => e.aluno.whatsapp);
-        const atual  = comWpp[currentIdx];
-        const total  = comWpp.length;
-        const fim    = currentIdx >= total;
+
+        async function disparar() {
+          setEnviando(true);
+          setDisparo("enviando");
+          try {
+            const res = await fetch("/api/whatsapp/disparar", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                mensagem,
+                alunos: comWpp.map((e) => ({
+                  id: e.aluno.id,
+                  nome: e.aluno.nome,
+                  whatsapp: e.aluno.whatsapp,
+                })),
+              }),
+            });
+            const json = await res.json() as { enviados: number; falhas: number; resultados: Resultado[] };
+            setResultados(json.resultados ?? []);
+            setDisparo("resultado");
+          } catch {
+            setDisparo("config");
+          } finally {
+            setEnviando(false);
+          }
+        }
 
         // ── Tela de configuração
         if (disparo === "config") {
@@ -346,7 +367,7 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
                   />
                   <p className="text-xs text-slate-400 mt-1">
-                    Preview: {mensagem.replace(/\[nome\]/gi, atual?.aluno.nome.split(" ")[0] ?? "Aluno").slice(0, 80)}…
+                    Preview: {mensagem.replace(/\[nome\]/gi, comWpp[0]?.aluno.nome.split(" ")[0] ?? "Aluno")}
                   </p>
                 </div>
 
@@ -366,10 +387,10 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
 
                 <div className="flex gap-3">
                   <button
-                    onClick={() => setDisparo("enviando")}
+                    onClick={disparar}
                     className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg text-sm transition"
                   >
-                    Iniciar envio →
+                    🚀 Enviar para todos
                   </button>
                   <button onClick={() => setDisparo(null)} className="flex-1 border border-slate-300 text-slate-600 text-sm font-medium py-2 rounded-lg hover:bg-slate-50 transition">
                     Cancelar
@@ -380,82 +401,64 @@ export default function AlunosEngajadosClient({ conquistas, concursos, sextas, m
           );
         }
 
-        // ── Tela de envio sequencial
+        // ── Tela de enviando (aguardando)
+        if (disparo === "enviando") {
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8 text-center space-y-4">
+                <div className="text-4xl animate-bounce">📲</div>
+                <p className="font-semibold text-slate-800">Enviando mensagens…</p>
+                <p className="text-sm text-slate-500">
+                  Aguarde — enviando para {comWpp.length} aluno{comWpp.length !== 1 ? "s" : ""} com intervalo de 2s entre cada envio.
+                </p>
+                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div className="h-2 bg-green-400 rounded-full animate-pulse w-full" />
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // ── Tela de resultado
+        const enviados = resultados.filter((r) => r.ok).length;
+        const falhas   = resultados.filter((r) => !r.ok);
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-800">📲 Enviando mensagens</h2>
+                <h2 className="text-lg font-bold text-slate-800">📲 Resultado do disparo</h2>
                 <button onClick={() => setDisparo(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
               </div>
 
-              {/* Progresso */}
-              <div>
-                <div className="flex justify-between text-xs text-slate-500 mb-1">
-                  <span>{fim ? "Concluído!" : `Aluno ${currentIdx + 1} de ${total}`}</span>
-                  <span>{enviados.size} enviado{enviados.size !== 1 ? "s" : ""}</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-bold text-green-600">{enviados}</p>
+                  <p className="text-xs text-green-700 mt-1">Enviado{enviados !== 1 ? "s" : ""} ✓</p>
                 </div>
-                <div className="w-full bg-slate-100 rounded-full h-2">
-                  <div
-                    className="bg-green-500 h-2 rounded-full transition-all"
-                    style={{ width: `${(currentIdx / total) * 100}%` }}
-                  />
+                <div className={`border rounded-xl p-4 text-center ${falhas.length > 0 ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-200"}`}>
+                  <p className={`text-3xl font-bold ${falhas.length > 0 ? "text-red-500" : "text-slate-400"}`}>{falhas.length}</p>
+                  <p className={`text-xs mt-1 ${falhas.length > 0 ? "text-red-600" : "text-slate-400"}`}>Falha{falhas.length !== 1 ? "s" : ""}</p>
                 </div>
               </div>
 
-              {fim ? (
-                // ── Resumo final
-                <div className="text-center space-y-3 py-4">
-                  <p className="text-4xl">🎉</p>
-                  <p className="font-semibold text-slate-800">Disparo concluído!</p>
-                  <p className="text-sm text-slate-500">{enviados.size} mensagem{enviados.size !== 1 ? "s" : ""} enviada{enviados.size !== 1 ? "s" : ""} de {total}</p>
-                  <button
-                    onClick={() => setDisparo(null)}
-                    className="mt-2 bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-2 rounded-lg text-sm transition"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              ) : (
-                // ── Aluno atual
-                <div className="space-y-4">
-                  <div className={`rounded-xl p-4 border-2 ${enviados.has(atual.aluno.id) ? "border-green-300 bg-green-50" : "border-slate-200 bg-slate-50"}`}>
-                    <p className="font-bold text-slate-800 text-lg">{atual.aluno.nome}</p>
-                    <p className="text-sm text-slate-500 mt-0.5">{atual.aluno.whatsapp}</p>
-                    <p className="text-xs text-slate-400 mt-1">{atual.aluno.concurso} · {atual.aluno.planoTipo}</p>
-                  </div>
-
-                  <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 italic line-clamp-3">
-                    {mensagem.replace(/\[nome\]/gi, atual.aluno.nome.split(" ")[0])}
-                  </div>
-
-                  <a
-                    href={whatsappUrlMsg(atual.aluno.whatsapp, atual.aluno.nome.split(" ")[0], mensagem)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setEnviados((prev) => new Set([...prev, atual.aluno.id]))}
-                    className="flex items-center justify-center gap-2 w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm transition"
-                  >
-                    💬 Abrir WhatsApp
-                  </a>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setCurrentIdx((i) => i + 1)}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg text-sm transition"
-                    >
-                      {currentIdx + 1 < total ? "Próximo →" : "Concluir ✓"}
-                    </button>
-                    <button
-                      onClick={() => setCurrentIdx((i) => i + 1)}
-                      className="px-4 border border-slate-300 text-slate-500 text-sm rounded-lg hover:bg-slate-50 transition"
-                      title="Pular este aluno"
-                    >
-                      Pular
-                    </button>
-                  </div>
+              {falhas.length > 0 && (
+                <div className="bg-red-50 rounded-lg p-3 space-y-1 max-h-40 overflow-y-auto">
+                  <p className="text-xs font-semibold text-red-700 mb-1">Não enviados:</p>
+                  {falhas.map((f) => (
+                    <div key={f.id} className="text-xs text-red-600">
+                      <span className="font-medium">{f.nome}</span>
+                      {f.erro && <span className="text-red-400"> — {f.erro}</span>}
+                    </div>
+                  ))}
                 </div>
               )}
+
+              <button
+                onClick={() => setDisparo(null)}
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg text-sm transition"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         );
