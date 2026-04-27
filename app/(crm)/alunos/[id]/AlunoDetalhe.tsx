@@ -163,6 +163,9 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
   const [fichaTexto, setFichaTexto] = useState<string | null>(null);
   const [fichaCarregando, setFichaCarregando] = useState(false);
   const [fichaErro, setFichaErro] = useState<string | null>(null);
+  const [fichaEditando, setFichaEditando] = useState(false);
+  const [fichaRascunho, setFichaRascunho] = useState("");
+  const [fichaSalvando, setFichaSalvando] = useState(false);
 
   function abrirEdicao() {
     setDadosForm({ nome: aluno.nome, email: aluno.email, cpf: aluno.cpf, whatsapp: aluno.whatsapp, concurso: aluno.concurso });
@@ -191,6 +194,26 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
       setFichaErro(e instanceof Error ? e.message : String(e));
     } finally {
       setFichaCarregando(false);
+    }
+  }
+
+  async function salvarFicha() {
+    if (!aluno.tutoryId) return;
+    setFichaSalvando(true);
+    try {
+      const res = await fetch(`/api/tutory/ficha/${aluno.tutoryId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ficha: fichaRascunho }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar");
+      setFichaTexto(fichaRascunho);
+      setFichaEditando(false);
+    } catch (e) {
+      alert("Erro ao salvar: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setFichaSalvando(false);
     }
   }
 
@@ -553,6 +576,96 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
         </div>
       </div>
 
+      {/* Ficha do Aluno (Tutory) */}
+      {aluno.tutoryId && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <button
+            onClick={() => fichaAberta ? setFichaAberta(false) : abrirFicha()}
+            className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">📋</span>
+              <h2 className="text-base font-semibold text-slate-700">Ficha do Aluno</h2>
+              <span className="text-xs text-slate-400">(Tutory)</span>
+            </div>
+            <svg
+              className={`w-4 h-4 text-slate-400 transition-transform ${fichaAberta ? "rotate-180" : ""}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {fichaAberta && (
+            <div className="px-6 pb-6 border-t border-slate-100">
+              {fichaCarregando ? (
+                <div className="flex items-center gap-2 py-6 text-slate-400 text-sm">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  Carregando ficha...
+                </div>
+              ) : fichaErro ? (
+                <div className="py-4 text-sm text-red-500">
+                  Erro ao carregar ficha: {fichaErro}
+                  <button
+                    onClick={() => { setFichaTexto(null); setFichaErro(null); abrirFicha(); }}
+                    className="ml-3 text-blue-600 hover:underline"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              ) : fichaEditando ? (
+                <div className="mt-4 space-y-3">
+                  <textarea
+                    value={fichaRascunho}
+                    onChange={(e) => setFichaRascunho(e.target.value)}
+                    rows={10}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-sans"
+                    placeholder="Escreva a ficha do aluno..."
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={salvarFicha}
+                      disabled={fichaSalvando}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50"
+                    >
+                      {fichaSalvando ? "Salvando..." : "Salvar no Tutory"}
+                    </button>
+                    <button
+                      onClick={() => setFichaEditando(false)}
+                      className="text-sm text-slate-500 hover:underline px-2"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  {fichaTexto === "" ? (
+                    <p className="text-sm text-slate-400 mb-3">Nenhuma ficha preenchida no Tutory.</p>
+                  ) : (
+                    <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed mb-3">
+                      {fichaTexto}
+                    </pre>
+                  )}
+                  <button
+                    onClick={() => { setFichaRascunho(fichaTexto ?? ""); setFichaEditando(true); }}
+                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Editar ficha
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Dados Pessoais (briefing) */}
       {(aluno.dataNascimento || aluno.cidade || aluno.estado || aluno.endereco || aluno.bio) && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -591,57 +704,6 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* Ficha do Aluno (Tutory) */}
-      {aluno.tutoryId && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <button
-            onClick={() => fichaAberta ? setFichaAberta(false) : abrirFicha()}
-            className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-base">📋</span>
-              <h2 className="text-base font-semibold text-slate-700">Ficha do Aluno</h2>
-              <span className="text-xs text-slate-400">(Tutory)</span>
-            </div>
-            <svg
-              className={`w-4 h-4 text-slate-400 transition-transform ${fichaAberta ? "rotate-180" : ""}`}
-              fill="none" stroke="currentColor" viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {fichaAberta && (
-            <div className="px-6 pb-6 border-t border-slate-100">
-              {fichaCarregando ? (
-                <div className="flex items-center gap-2 py-6 text-slate-400 text-sm">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                  </svg>
-                  Carregando ficha...
-                </div>
-              ) : fichaErro ? (
-                <div className="py-4 text-sm text-red-500">
-                  Erro ao carregar ficha: {fichaErro}
-                  <button
-                    onClick={() => { setFichaTexto(null); setFichaErro(null); abrirFicha(); }}
-                    className="ml-3 text-blue-600 hover:underline"
-                  >
-                    Tentar novamente
-                  </button>
-                </div>
-              ) : fichaTexto === "" ? (
-                <p className="py-4 text-sm text-slate-400">Nenhuma ficha preenchida no Tutory.</p>
-              ) : (
-                <pre className="mt-4 text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
-                  {fichaTexto}
-                </pre>
-              )}
-            </div>
-          )}
         </div>
       )}
 
