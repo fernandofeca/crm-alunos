@@ -9,17 +9,18 @@ let cachedCookie: { value: string; expiry: number } | null = null;
 async function getTutoryCookie(): Promise<string> {
   if (cachedCookie && cachedCookie.expiry > Date.now()) return cachedCookie.value;
 
-  const res = await fetch("https://admin.tutory.com.br/auth/authenticate", {
+  const res = await fetch("https://admin.tutory.com.br/intent/login", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ account: TUTORY_ACCOUNT, password: TUTORY_PASSWORD }),
-    redirect: "manual",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+    body: `account=${encodeURIComponent(TUTORY_ACCOUNT)}&password=${encodeURIComponent(TUTORY_PASSWORD)}`,
     cache: "no-store",
   });
 
-  // Login bem-sucedido retorna redirect 302 com Set-Cookie
   const setCookie = res.headers.get("set-cookie") ?? "";
-  const match = setCookie.match(/tutory_session=[^;]+/);
+  const match = setCookie.match(/PHPSESSID=[^;]+/);
   if (!match) throw new Error("Login Tutory falhou — cookie não encontrado");
 
   cachedCookie = { value: match[0], expiry: Date.now() + 30 * 60 * 1000 }; // 30 min
