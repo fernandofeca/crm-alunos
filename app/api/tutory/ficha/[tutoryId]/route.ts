@@ -78,6 +78,15 @@ function limparHtml(str: string): string {
     .trim();
 }
 
+// Converte texto plano → HTML compatível com o editor Tutory
+function textoParaHtml(texto: string): string {
+  if (!texto.trim()) return "";
+  return texto
+    .split(/\n\n+/)
+    .map((para) => `<p>${para.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
 // Converte "YYYY-MM-DD" → "DD/MM/YYYY" para o Tutory
 function paraDataTutory(iso: string): string {
   if (!iso) return "";
@@ -203,7 +212,7 @@ export async function PUT(
 
   // Monta overrides com os campos que foram enviados
   const overrides: Record<string, string> = {};
-  if (typeof body.ficha === "string") overrides.anmnese = body.ficha;
+  if (typeof body.ficha === "string") overrides.anmnese = textoParaHtml(body.ficha);
   if (body.dataInicio) overrides.data_inicio = paraDataTutory(body.dataInicio);
   if (body.dataInicio && body.planoVencimento) {
     overrides.periodo = calcularPeriodoMeses(body.dataInicio, body.planoVencimento);
