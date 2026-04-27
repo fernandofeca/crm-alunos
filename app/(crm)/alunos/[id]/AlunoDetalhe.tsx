@@ -558,7 +558,20 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
                 <input
                   type="date"
                   value={aluno.dataInicio ? aluno.dataInicio.slice(0, 10) : ""}
-                  onChange={(e) => patchAluno({ dataInicio: e.target.value || null } as Partial<Aluno>)}
+                  onChange={async (e) => {
+                    const novaData = e.target.value || null;
+                    await patchAluno({ dataInicio: novaData } as Partial<Aluno>);
+                    if (aluno.tutoryId && novaData) {
+                      fetch(`/api/tutory/ficha/${aluno.tutoryId}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          dataInicio: novaData,
+                          planoVencimento: aluno.planoVencimento?.slice(0, 10) || undefined,
+                        }),
+                      });
+                    }
+                  }}
                   className="text-sm bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -567,11 +580,27 @@ export default function AlunoDetalhe({ aluno: initial, concursos = [] }: { aluno
                 <input
                   type="date"
                   value={aluno.planoVencimento ? aluno.planoVencimento.slice(0, 10) : ""}
-                  onChange={(e) => patchAluno({ planoVencimento: e.target.value || null } as Partial<Aluno>)}
+                  onChange={async (e) => {
+                    const novoVenc = e.target.value || null;
+                    await patchAluno({ planoVencimento: novoVenc } as Partial<Aluno>);
+                    if (aluno.tutoryId && novoVenc && aluno.dataInicio) {
+                      fetch(`/api/tutory/ficha/${aluno.tutoryId}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          dataInicio: aluno.dataInicio.slice(0, 10),
+                          planoVencimento: novoVenc,
+                        }),
+                      });
+                    }
+                  }}
                   className="text-sm bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
+            {aluno.tutoryId && (
+              <p className="text-xs text-slate-400 mt-2">✓ Sincroniza automaticamente com Tutory</p>
+            )}
           </div>
         </div>
       </div>
